@@ -1,22 +1,29 @@
 """Run rSim and stream it to ssl-vision-client. The architecture proof.
 
-    python -m tbots.apps.viz_rsim
+    python -m tbots.apps.viz_rsim --realtime
 
-Open http://localhost:8082 and you are watching an in-process training
-simulator through the same browser tool you use for live matches.
+Open http://localhost:8083 and you are watching an in-process training
+simulator through the same browser tool you use for live matches. That is
+the compose stack's `vision-client-rsim`, on 10006. The match view on :8082
+listens on 10020, which the ER-Force simulator already publishes to, so rSim
+cannot share it: both send camera 0 and the browser flickers between them.
 """
 
 from __future__ import annotations
 
 import argparse
 import math
+import sys
 import time
 
 from tbots.backends.base import Scenario
 from tbots.backends.rsim import RSimBackend
 from tbots.core.geometry import DIV_B
+from tbots.net.multicast import senders
 from tbots.net.vision_publisher import VisionPublisher
 from tbots.skills.go_to_point import GoToPoint
+
+_VISION_GROUP = "224.5.23.2"
 
 
 def main() -> None:
@@ -25,17 +32,28 @@ def main() -> None:
                    help="sleep to match wall clock (needed to actually watch)")
     p.add_argument("--seconds", type=float, default=60.0)
     p.add_argument("--port", type=int, default=10006,
-                   help="vision multicast port. Default 10006 matches "
-                        "VisionPublisher and a native ssl-vision-client "
-                        "(macOS, or Step 13's local workaround). The "
-                        "docker-compose vision-client listens on 10020 "
-                        "instead (it shares the port with the ER-Force "
-                        "simulator container) -- pass --port 10020 when "
-                        "watching through `docker compose up -d`.")
+                   help="vision multicast port. Default 10006 is what the "
+                        "compose stack's vision-client-rsim "
+                        "(http://localhost:8083) and a native "
+                        "ssl-vision-client listen on. Not 10020: the "
+                        "ER-Force simulator publishes there, and the app "
+                        "refuses any port that already has a publisher.")
     args = p.parse_args()
 
+    # Before we send anything, so whatever this hears is someone else.
+    others = senders(_VISION_GROUP, args.port)
+    if others:
+        src = ", ".join(f"{host}:{port}" for host, port in sorted(others))
+        sys.exit(
+            f"viz_rsim: {_VISION_GROUP}:{args.port} already has a vision "
+            f"publisher ({src}).\n"
+            "ssl-vision-client would flicker between that world and this "
+            "one. Stop the other publisher. On the compose stack 10020 is "
+            "the ER-Force simulator; rSim belongs on the default 10006, "
+            "watched at http://localhost:8083.")
+
     backend = RSimBackend(n_us=6, n_them=6, dt=1.0 / 60.0, geometry=DIV_B)
-    pub = VisionPublisher(geometry=DIV_B, port=args.port)
+    pub = VisionPublisher(group=_VISION_GROUP, geometry=DIV_B, port=args.port)
     pub.publish_geometry()
 
     world = backend.reset(Scenario.kickoff())

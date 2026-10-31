@@ -21,11 +21,12 @@ vision:
   # listens on 224.5.23.2:10020 to match. Both ends of this file's dev
   # stack therefore agree.
   #
-  # KNOWN GAP: src/tbots/net/vision_publisher.py still defaults to port
-  # 10006 in code, and nothing reads this file yet -- the config loader is
-  # a fall TASK. Until the loader exists, apps that publish vision take an
-  # explicit --port: `python -m tbots.apps.viz_rsim --port 10020` against
-  # this compose stack. See docs/SETUP_LOG.md, "Post-Step-16" entry.
+  # This is the port we LISTEN on for the match. It is not a port to
+  # PUBLISH on: the simulator already does, and a second publisher makes
+  # ssl-vision-client flicker between both worlds. Our own publishers
+  # (viz_rsim, eval, replay) stay on VisionPublisher's default 10006,
+  # which the compose stack's vision-client-rsim renders at :8083. See
+  # docs/SETUP_LOG.md, "viz_rsim flickers against the ER-Force simulator".
   port: 10020
 
 referee:

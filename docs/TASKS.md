@@ -168,6 +168,7 @@ Three of the four are done — see §2. What is left:
 | TASK-085 | GIL release in rSim `step()`. Only if TASK-055's number disappoints. |
 | — | Refresh the pins: GC submodule, docker image and `fetch_tools.sh` together. |
 | — | `docs/PINNED_VERSIONS.txt` is stale; regenerate. |
+| — | ER-Force geometry omits `line_thickness`, so `ssl-vision-client` 2.1.1 on :8082 draws every field line and both goals 0 mm wide during networked matches. The client ignores `field_lines` and redraws from the scalars. SETUP_LOG "viz_rsim flickers against the ER-Force simulator". |
 | — | Doc drift: `CLAUDE.md` says `~/code/tritonbots`, repo is `~/tritonbots`; `docker-compose.yml` refers to `src/tbots/gen/`, path is `src/tbots/_pb/`. |
 
 ---

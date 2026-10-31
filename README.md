@@ -11,13 +11,13 @@
 
     make proto              # regenerate protobufs
     make test                # run tests
-    docker compose up -d    # referee + simulator + visualizer
-    python -m tbots.apps.viz_rsim --realtime --port 10020   # watch rSim at localhost:8082
+    docker compose up -d    # referee + simulator + two visualizers
+    python -m tbots.apps.viz_rsim --realtime   # watch rSim at localhost:8083
 
-    # --port 10020 matches the docker-compose vision-client, which shares
-    # its multicast port with the ER-Force simulator container. Watching a
-    # real match instead of rSim, or using a native (non-docker)
-    # ssl-vision-client? Drop --port -- the default 10006 is correct there.
+    # Two browser views. :8082 is the ER-Force match (vision on 10020).
+    # :8083 is our own publishers -- rSim, eval, replay -- on 10006. Never
+    # pass --port 10020: the simulator already publishes there, the client
+    # flickers between both worlds, and viz_rsim now refuses to start.
 
 ## Measured throughput
 
