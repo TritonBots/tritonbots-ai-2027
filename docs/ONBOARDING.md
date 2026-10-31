@@ -354,7 +354,7 @@ Docker Desktop is optional on macOS and **will not** run our compose stack (no h
 
 ```bash
 mkdir -p ~/code && cd ~/code
-git clone --recurse-submodules https://github.com/YashTandon05/tritonbots.git
+git clone --recurse-submodules https://github.com/TritonBots/tritonbots-ai-2027.git tritonbots
 cd tritonbots
 ```
 

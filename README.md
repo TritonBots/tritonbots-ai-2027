@@ -2,7 +2,7 @@
 
 ## Quick start
 
-    git clone --recurse-submodules https://github.com/YashTandon05/tritonbots.git
+    git clone --recurse-submodules https://github.com/TritonBots/tritonbots-ai-2027.git tritonbots
     cd tritonbots
     # then follow docs/SETUP.md end to end
     # already set up? go straight to docs/ONBOARDING.md

@@ -41,9 +41,11 @@ If two of these disagree on a fact, stop and ask. Do not pick one.
   Noble's packaged `libode-dev` is also 0.16.2, so the version check alone
   passes against the wrong build, which compiles and gives wrong physics.
 - **No sudo.** If a step needs it, stop and ask.
+- This repo: https://github.com/TritonBots/tritonbots-ai-2027 (`origin`).
+  It is a GitHub fork of the original https://github.com/YashTandon05/tritonbots
+  (`personal`); changes reach `origin/main` by pull request.
 - Forks: rSim https://github.com/YashTandon05/rSim, rSoccer
-  https://github.com/YashTandon05/rSoccer, this repo
-  https://github.com/YashTandon05/tritonbots.
+  https://github.com/YashTandon05/rSoccer.
 
 ---
 
