@@ -1872,3 +1872,74 @@ Notes:        CLAUDE.md no longer describes a one-time build from SETUP.md.
               a SETUP_LOG block, and the same hard prohibitions. Section 6
               ("unreliable parts of SETUP.md") is gone with the build. The
               repo path is corrected to ~/tritonbots.
+
+## viz_rsim flickers against the ER-Force simulator   [PASS]
+Verification: Reported: `python -m tbots.apps.viz_rsim --realtime --port 10020`
+              with the compose stack up flickers at :8082 between the orbit
+              and a pre-kickoff line-up, and the goals and field lines show
+              for under a second at a time.
+
+              On the wire, 224.5.23.2:10020 over 3 s: two senders, both
+              `camera_id 0`. ER-Force (22 robots parked on the touchline,
+              ~67 Hz, geometry in EVERY packet) and viz_rsim (12 robots,
+              60 Hz, geometry every 300 ticks). Sampling the :8082 DOM every
+              50 ms for 3 s with the pre-fix app running: 12 robots in 5
+              samples, 22 in 55, and all 17 field/goal lines 0 wide in all
+              60.
+
+              After: `viz_rsim --port 10020` exits 1 naming ER-Force's source
+              address; a second concurrent `viz_rsim` on 10006 exits 1 too.
+              `viz_rsim --realtime` (default 10006) watched through
+              ssl-vision-client v2.1.1 on :8083 <- 10006, the same version and
+              flags as the new compose service: 60 samples, always 12 robots,
+              17 lines, none 0 wide. `make lint` clean; `make test` 72 passed,
+              1 skipped (the existing network-parity skip). New
+              tests/test_multicast.py runs on real TTL-0 multicast, no mocks.
+Deviations:   Not a TASKS.md task; a user-reported bug. Reverses the
+              Post-Step-16 decision (2026-08-10) to watch rSim through the
+              compose vision-client with `--port 10020`. That entry verified
+              only that our packets REACHED 10020, never what the client drew
+              with ER-Force also there. Two causes, both from sharing the port:
+
+              1. Robots. ssl-vision-client keeps the newest frame per camera
+                 id. Both sources are camera 0, so the browser shows whichever
+                 arrived last.
+              2. Markings. Client 2.1.1 ignores `field_lines`/`field_arcs`.
+                 `SvgFieldLines` and `SvgGoal` rebuild every line and both
+                 goals from the scalar fields, with stroke width
+                 `lineThickness / 1000`. ER-Force's geometry omits
+                 `line_thickness` (as well as the penalty and centre-circle
+                 scalars TASK-071 found), so it draws them 0 wide. The client
+                 pushes geometry to the browser only on change, so each of our
+                 packets (every 5 s) flashed the lines in until ER-Force's
+                 next packet ~15 ms later.
+
+              Fix: rSim no longer shares a port with the simulator.
+              - docker-compose.yml: new `vision-client-rsim` service, same
+                pinned image, `:8083` <- `224.5.23.2:10006`. :8082 stays the
+                match. Not exercised under `docker compose up` here (see
+                Notes); the identical native binary was, and
+                `docker compose config` parses.
+              - net/multicast.py: `senders(group, port, seconds)` returns
+                every source heard on a port. viz_rsim calls it before its
+                first send and refuses to start if anyone is already
+                publishing. TASK-058's `--render vision` and TASK-082's
+                replay will hit the same trap and should do the same.
+              - viz_rsim's docstring and `--port` help, README, SETUP.md 13.4
+                (compose block and verify) and acceptance checks 5/6,
+                ONBOARDING 1.4 and its cheat sheet, and configs/net/dev.yaml
+                all now say :8083 / 10006. VisionPublisher is untouched.
+Notes:        - FINDING, not fixed: because of cause 2, the MATCH view on
+                :8082 draws no field lines and no goals even with nothing of
+                ours running. TASK-071's "the client is drawing a 9 x 6 m
+                field" is true of the canvas size only. Added to TASKS.md §5.
+              - ENVIRONMENT: Docker Desktop's WSL integration proxy (started
+                2026-10-31 13:03) has taken over /var/run/docker.sock. The
+                stack runs on the native docker.io daemon (pid 466, socket-
+                activated, started 2026-10-29), which the `docker` CLI can no
+                longer reach: `docker ps` and `docker compose ps` come back
+                empty while all three containers are up. CLAUDE.md says Docker
+                is docker.io, not Desktop. Disabling Desktop's WSL integration
+                for this distro and restarting docker.socket (sudo) puts it
+                back. Until then `docker compose up -d vision-client-rsim`
+                would start on the wrong engine.

@@ -14,8 +14,10 @@ Two things every new person needs to know:
 
 from __future__ import annotations
 
+import select
 import socket
 import struct
+import time
 
 
 def rx_socket(group: str, port: int, iface: str = "0.0.0.0",
@@ -42,6 +44,32 @@ def tx_socket(ttl: int = 0, iface: str = "0.0.0.0") -> socket.socket:
     s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
                  socket.inet_aton(iface))
     return s
+
+
+def senders(group: str, port: int, seconds: float = 0.5,
+            iface: str = "0.0.0.0") -> set[tuple[str, int]]:
+    """Every source address heard on group:port within `seconds`.
+
+    Call this BEFORE you start publishing, so anything it hears is someone
+    else. Two vision publishers on one port do not error: ssl-vision-client
+    keeps the newest frame per camera id, so it silently flickers between
+    the two worlds. Vision sources publish continuously (ER-Force at ~66 Hz,
+    idle or not), so half a second is plenty to hear one.
+    """
+    s = rx_socket(group, port, iface)
+    heard: set[tuple[str, int]] = set()
+    deadline = time.monotonic() + seconds
+    try:
+        while (left := deadline - time.monotonic()) > 0:
+            if select.select([s], [], [], left)[0]:
+                try:
+                    _, addr = s.recvfrom(65535)
+                except (BlockingIOError, InterruptedError):
+                    continue
+                heard.add((addr[0], addr[1]))
+    finally:
+        s.close()
+    return heard
 
 
 def drain(sock: socket.socket, bufsize: int = 65535) -> list[bytes]:

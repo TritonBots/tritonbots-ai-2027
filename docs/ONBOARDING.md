@@ -354,7 +354,7 @@ Docker Desktop is optional on macOS and **will not** run our compose stack (no h
 
 ```bash
 mkdir -p ~/code && cd ~/code
-git clone --recurse-submodules https://github.com/YashTandon05/tritonbots.git
+git clone --recurse-submodules https://github.com/TritonBots/tritonbots-ai-2027.git tritonbots
 cd tritonbots
 ```
 
@@ -421,31 +421,30 @@ This is the moment the architecture stops being abstract.
 
 ```bash
 # Linux / WSL2
-docker compose up -d vision-client
+docker compose up -d vision-client-rsim
 
 # macOS
 tbots-net    # the multicast route alias from 1.1
 tools/bin/ssl-vision-client -address :8082 -visionAddress 224.5.23.2:10006
 ```
 
-Open **http://localhost:8082**. You should see an empty green field.
+Open **http://localhost:8083** (macOS: **:8082**). You should see an empty green field.
 
 **Terminal B — run the training simulator and stream it to the browser:**
 
 ```bash
-# Linux / WSL2 -- --port 10020 matches the compose vision-client, which
-# shares its multicast port with the ER-Force simulator container
+# Both platforms -- the default port 10006 is what vision-client-rsim
+# (Linux / WSL2) and the native client above (macOS) listen on
 cd ~/code/tritonbots && source .venv/bin/activate
-python -m tbots.apps.viz_rsim --realtime --seconds 60 --port 10020
-
-# macOS -- the native ssl-vision-client above listens on the default 10006,
-# so drop --port entirely
 python -m tbots.apps.viz_rsim --realtime --seconds 60
 ```
 
 Six robots should orbit the centre circle in your browser. **Nothing
-rendering?** You are almost certainly on the wrong port — rSim's publisher
-defaults to 10006, but the docker-compose vision-client listens on 10020.
+rendering?** You are almost certainly on the wrong page: rSim is on
+**:8083**. **:8082** is the ER-Force match simulator, which publishes on
+10020. Do not point rSim at 10020 to "fix" that. Two publishers on one
+port make the browser flicker between both worlds, so `viz_rsim` refuses
+to start there.
 
 **Stop and appreciate what just happened.** That browser tab is the same tool we use to watch a live competition match. It is currently rendering a physics engine running *inside your Python process*, because our `VisionPublisher` converts a `WorldState` into the league's own vision packets. The training simulator, our internal data contract, and the official protocol all agree with each other.
 
@@ -805,7 +804,7 @@ make fmt && make lint && make test
 | Regenerate protobufs | `make proto` |
 | Run tests | `make test` |
 | Format and lint | `make fmt && make lint` |
-| Watch rSim in the browser | `python -m tbots.apps.viz_rsim --realtime --port 10020` (WSL2/Linux docker-compose stack) or `--realtime` alone against a native ssl-vision-client |
+| Watch rSim in the browser | `python -m tbots.apps.viz_rsim --realtime`, then http://localhost:8083 (compose stack) or :8082 (native ssl-vision-client on macOS) |
 | Benchmark my machine | `python -m tbots.apps.viz_rsim --seconds 60 \| tail -1` |
 | Monitor the referee | `python -m tbots.apps.ref_monitor --team "TritonBots"` |
 | Train (not yet implemented, TASK-056) | `python -m tbots.rl.train env=div_b_6v6 reward=NAME train.run_dir=runs/NAME` |

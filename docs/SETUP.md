@@ -3469,6 +3469,16 @@ services:
     restart: unless-stopped
     command: ["-address", ":8082", "-visionAddress", "224.5.23.2:10020"]
 
+  vision-client-rsim:
+    # The same client for OUR publishers (viz_rsim, eval, replay) on 10006.
+    # They cannot share 10020 with the simulator: both send camera 0 and
+    # the browser flickers between the two worlds. :8082 is the match,
+    # :8083 is rSim.
+    image: robocupssl/ssl-vision-client:latest
+    network_mode: host
+    restart: unless-stopped
+    command: ["-address", ":8083", "-visionAddress", "224.5.23.2:10006"]
+
   # Uncomment once you need ball placement and robot-count enforcement.
   # The GC cannot do those without a tracker source.
   # autoref:
@@ -3500,6 +3510,7 @@ sleep 5
 docker compose ps
 curl -sf http://localhost:8081 > /dev/null && echo "GC UI ok"
 curl -sf http://localhost:8082 > /dev/null && echo "vision-client ok"
+curl -sf http://localhost:8083 > /dev/null && echo "vision-client-rsim ok"
 ```
 
 > The GC repo also ships its own `docker-compose.yaml` that runs the GC together with autoRefs and other common components. Read it as a reference — it is maintained by the league and yours is not.
@@ -3947,10 +3958,10 @@ Now click **Stop**, then **Force Start**, then **Halt** in the GC UI. Each click
 ### ✅ 5. The visualizer runs
 
 ```bash
-docker compose up -d vision-client            # Linux / WSL2
+docker compose up -d vision-client-rsim       # Linux / WSL2
 # macOS:  tools/bin/ssl-vision-client -address :8082 -visionAddress 224.5.23.2:10006
 ```
-Open `http://localhost:8082`. You should see an empty green field.
+Open `http://localhost:8083` (macOS: `:8082`). You should see an empty green field.
 *Proves:* the client is up and listening on the right multicast group.
 
 ### ✅ 6. rSim renders in the browser — **the architecture proof**
@@ -3959,7 +3970,7 @@ Terminal C:
 ```bash
 python -m tbots.apps.viz_rsim --realtime --seconds 60
 ```
-Watch `http://localhost:8082`. Six robots should orbit the centre circle.
+Watch `http://localhost:8083` (macOS: `:8082`). Six robots should orbit the centre circle.
 
 *Proves:* the in-process training simulator, our `WorldState` contract, and the league's vision serialisation all agree with each other. At this moment the same browser tab can render both backends, and nothing above `net/` knows the difference. **This is the whole design working.**
 
@@ -4268,7 +4279,7 @@ Finally, create a short root README so a new person knows where to start:
     make proto              # regenerate protobufs
     make test               # run tests
     docker compose up -d    # referee + simulator + visualizer
-    python -m tbots.apps.viz_rsim --realtime   # watch rSim at localhost:8082
+    python -m tbots.apps.viz_rsim --realtime   # watch rSim at localhost:8083
 
 ## Measured throughput
 

@@ -54,6 +54,19 @@ services:
     restart: unless-stopped
     command: ["-address", ":8082", "-visionAddress", "224.5.23.2:10020"]
 
+  vision-client-rsim:
+    # The same client, for OUR publishers (viz_rsim, eval, replay) on the
+    # classic 10006. They cannot share 10020 with the simulator above: both
+    # send camera 0, the client keeps the newest frame per camera, and the
+    # browser flickers between the two worlds. Its geometry fights ours the
+    # same way -- the simulator omits line_thickness, so whenever its packet
+    # wins the client draws every line and both goals 0 mm wide.
+    # :8082 is the match, :8083 is rSim.
+    image: robocupssl/ssl-vision-client:2.1.1
+    network_mode: host
+    restart: unless-stopped
+    command: ["-address", ":8083", "-visionAddress", "224.5.23.2:10006"]
+
   # Uncomment once you need ball placement and robot-count enforcement.
   # The GC cannot do those without a tracker source.
   # autoref:
