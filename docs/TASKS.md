@@ -59,6 +59,11 @@ it, because that is where real runs happen.
 | TASK-004 | CI pins the verified rSim field type, layouts, action offsets, and 60 Hz timestep; it also runs the verification probe. | `tests/test_rsim_backend.py`, `.github/workflows/ci.yml` |
 | TASK-073 | `as_opponent()` rotates a world by 180° and exchanges `us` and `them` for self-play. | `tests/test_perspective.py` |
 | TASK-074 | Frozen perception dataclasses, capture time, and telemetry are part of the core world contract. | `tests/test_core.py`, `mypy src/tbots/core` |
+| TASK-020 | `perception/tracker.py`: per-object Kalman filters (constant acceleration for robots, constant velocity for ball and heading), late-camera rejection, manoeuvre reset, extrapolation capped at 0.25 s, `Perspective` applied once at the end. Worst error 14.4 mm over ten seeds at 30 ms latency on a contact-free rSim trajectory. | `tests/test_tracker.py`, SETUP_LOG TASK-020 |
+| TASK-010 | `net/vision.py`: decode to meters, drop duplicates, one tick per camera cycle, vision-PC clock mapped onto ours, wire geometry exposed. | `tests/test_vision.py`, `tests/test_network.py` |
+| TASK-011 | `net/robot_control.py`: one `RobotControl` per tick, port picked per packet from the current colour, refuses to guess an unresolved one, dribbler-contact feedback. | `tests/test_robot_control.py`, `tests/test_network.py` |
+| TASK-012 | `apps/wiggle.py` drives a circle through ER-Force and fits it from vision: radius 0.51 m against 0.50 m commanded, both colours. | `python -m tbots.apps.wiggle` |
+| TASK-014 | `NetworkBackend.observe()`: vision through the tracker, `GameState` and telemetry attached, Division checked on the wire. The parity test runs: GoToPoint reaches 36 mm against ER-Force (blue) and 35 mm (yellow, defending +x). | `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py tests/test_backend_parity.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -88,7 +93,6 @@ Three of the four are done — see §2. What is left:
 | ID | Task | Size | Done when |
 |---|---|---|---|
 | **TASK-075** | **`PerceptionSim`** in `perception/sim.py`. Takes ground-truth `WorldState`, emits delayed, noisy, dropout-marked state. Two outputs: a `WorldState` (`noisy` mode) and `DetectionFrame`s plus synthetic `RobotFeedback` (`tracked` mode). Parameters randomised per episode from config. | M | Test: with zero noise the output equals the input shifted by the sampled delay; with dropout, some robots are `visible=False`; seeded runs are identical. |
-| **TASK-020** | **`perception/tracker.py`.** Association, velocity estimation, extrapolation through dropouts, forward-prediction to `t = now + actuation delay`. Consumes `DetectionFrame`s, applies `Perspective` once at the end. Was Tier 2; `tracked` mode needs it, but `noisy` mode keeps day one unblocked if it slips. | L | Test: feed frames synthesised from a known rSim trajectory with 30 ms latency; tracked positions at `t` are within 2 cm of truth at `t`. |
 
 ### 3.4 Environment and the contracts recruits touch
 
@@ -152,9 +156,10 @@ Three of the four are done — see §2. What is left:
 | **TASK-041** | **`tactics/scripted.py`**: the baseline opponent. Nothing is evaluable at 6v6 without it. Do not let it slip past week two. |
 | TASK-030 to 037 | Skill implementations: `FacePoint`, `Shoot`, `PassTo`, `ReceivePass`, `Dribble`, `Intercept`, `Goalkeep`, `LearnedSkill`. Each learned one is a `SkillTask`. Classic recruit work. |
 | TASK-040, 042, 043 | Roles (Hungarian), learned-tactic wrapper, restart routines. All live inside the Coach. |
-| TASK-014 | `NetworkBackend.observe()`: merge frames, run the tracker, attach `GameState`, read geometry from the wire and fail on a Division mismatch. Unblocks the two-backend parity test. |
-| TASK-010, 011, 012 | `net/vision.py`, `net/robot_control.py`, `apps/wiggle.py`. Moved out of Tier 1 on 2026-09-04: the review scoped itself to training, and these prove the match path. Still cheap and worth doing early. |
-| TASK-015 | `net/sim_control.py`: ER-Force's `place()`. Blocked on the proto collision in SETUP_LOG Step 7. |
+| TASK-015 | `net/sim_control.py`: ER-Force's `place()`. Blocked on the proto collision in SETUP_LOG Step 7. **FINDING (TASK-014):** it is now the only reason `NetworkBackend.reset()` cannot run, so the parity test drives robot 0 to the start pose instead of placing it. It would also fix the next row's robot count. |
+| TASK-087 | **FINDING (TASK-014):** the ER-Force simulator on the `2020B` preset spawns **11 robots per team** (Division A's count) along the touchlines, so a networked match has 11 `us` against the Coach's 6. The commented-out `simulation-controller` in `docker-compose.yml` sets robot count from the referee's `max_allowed_bots`; enable it, or have TASK-015 remove the extras. Decide which. |
+| TASK-088 | **FINDING (TASK-014):** `NetworkBackend.dt` is 1/60 s, but its `step()` is paced by vision, and ER-Force publishes at ~66 Hz, so a networked step is ~15 ms. Anything that integrates by `backend.dt` on the match path is 10% off. Either measure `dt` from `WorldState.t` per step or document `dt` as nominal. |
+
 | TASK-018 | AutoReferee in the compose stack. |
 
 ---
@@ -181,6 +186,13 @@ Interim answers, not decisions. Detail in `docs/ARCHITECTURE.md` §13.
 - Observation scaling constants.
 - The exact stop-speed threshold for the rule filter.
 - Match path: radio frame, firmware heading field, real telemetry. Out of scope.
+  `net/robot_control.py` speaks the simulation protocol only; a radio sender
+  is a sibling with the same three methods.
+- Chip angle and dribbler maximum. The simulation protocol takes degrees and
+  rpm; our command has a chip flag and a 0..1 dribbler. Interim: 45 degrees
+  and 1000 rpm, constructor arguments of `RobotControlSender`, unmeasured.
+- Actuation delay. The tracker predicts to `now + actuation_delay`;
+  `NetworkBackend` defaults it to 0 until a robot is measured.
 - Set encoder architecture and zone discretisation.
 
 ---

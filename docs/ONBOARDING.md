@@ -984,8 +984,14 @@ Work down this list in order. Do not skip to hyperparameters.
 That is a sim-to-sim gap, and finding it now is a gift. Run the parity test:
 
 ```bash
-TBOTS_NETWORK_TESTS=1 pytest -q tests/test_backend_parity.py
+docker compose up -d simulator game-controller
+# In the game controller UI (http://localhost:8081), name one team exactly
+# "TritonBots". Until you do, the test fails telling you so.
+TBOTS_NETWORK_TESTS=1 pytest -q tests/test_network.py tests/test_backend_parity.py
 ```
+
+`python -m tbots.apps.wiggle` is the quicker first check: it drives one robot
+in a circle and needs no referee at all.
 
 Usual causes, in order: domain randomisation was off during training; a units or frame mismatch in the network backend; the tracker's velocity estimates differ from rSim's ground truth; latency compensation is missing.
 

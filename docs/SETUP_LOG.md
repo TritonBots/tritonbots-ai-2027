@@ -1943,3 +1943,154 @@ Notes:        - FINDING, not fixed: because of cause 2, the MATCH view on
                 for this distro and restarting docker.socket (sudo) puts it
                 back. Until then `docker compose up -d vision-client-rsim`
                 would start on the wrong engine.
+
+## TASK-010 — `net/vision.py`, the SSL-Vision receiver   [PASS]
+Verification: `pytest tests/test_vision.py` -> 7 passed (real multicast,
+              TTL 0, port 10597). Live, against ER-Force on 10020:
+              `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py
+              -k vision` -> passed: 50-80 ticks/s, geometry 9.0 x 6.0 m,
+              clock offset under 50 ms on one host.
+Deviations:   "Merge" is interpreted as bookkeeping, not averaging. The
+              receiver decodes, de-duplicates (camera, frame_number), puts
+              frames on our clock and returns them in t_capture order; the
+              tracker fuses overlapping cameras, because it owns the filter
+              that knows how much to trust each sighting.
+              `wait_for_next_frame` returns once every camera heard in the
+              last 0.5 s has sent a new frame, so four staggered cameras
+              give one tick, not four.
+              Added `WireGeometry` and `VisionReceiver.geometry`, which
+              TASK-014's Division check needs. Robots with no orientation on
+              the wire are dropped rather than given heading 0.
+Notes:        - ER-FORCE WIRE FACTS: ~66 Hz detection, interleaved 1:1 with
+                geometry; `t_sent - t_capture` is a constant 10 ms (its
+                simulated processing time); wire delay on this host ~0.5 ms.
+                Measured end-to-end, `WorldState.t - t_capture` is 12 ms
+                median, 24 ms worst, in the live loop.
+              - CLOCKS: `t_capture` is the vision PC's clock. The receiver
+                re-stamps onto ours with the minimum over 600 packets of
+                `t_received - t_sent`. That needs some packets read the
+                moment they land, which `wait_for_next_frame` does. The first
+                test of this read packets late and measured a 30 ms bias:
+                that is a real failure mode if anyone pumps the receiver
+                only once per tick, so it is now a test.
+              - SO_TIMESTAMP (Linux value 29; Python does not export it)
+                would remove that requirement, but on this WSL2 host
+                loopback multicast packets carry no arrival stamp and the
+                kernel stamps them at read time. Not used. Worth retrying on
+                a real NIC at the field.
+
+## TASK-011 — `net/robot_control.py`, the command sender   [PASS]
+Verification: `pytest tests/test_robot_control.py` -> 6 passed. Live:
+              `tests/test_network.py::test_control_feedback_from_the_simulator`
+              -> passed; and TASK-012's wiggle, both colours.
+Deviations:   `send(commands, perspective=None)` takes the CURRENT
+              perspective and picks the port per packet. The stub fixed the
+              port at construction, but colours can change at half time
+              (SETUP_LOG TASK-013 notes), so a fixed port would drive the
+              wrong team for a half. An explicit `port` still pins it.
+              An unresolved perspective raises instead of defaulting to blue:
+              in a simulator, blue would be the other team's robots.
+              `feedback()` returns `dict[int, RobotFeedback]` (core type),
+              latched per robot with a timestamp; errors are on `.errors`.
+              Chip angle and dribbler rpm are constructor arguments with
+              interim defaults (45 degrees, 1000 rpm). Nothing in the
+              protocol or the ER-Force spec protos states them; recorded in
+              TASKS.md §6 as open.
+Notes:        ER-FORCE WIRE FACTS: the protocol is proto2 and
+              `MoveLocalVelocity`'s three fields are `required` (a packet
+              missing `left` does not serialise). The simulator answers on
+              the sending socket, one `RobotControlResponse` per packet,
+              with feedback for each commanded robot that exists. A command
+              for an id not on the field is dropped silently: no error, no
+              feedback. Forward is the robot's local frame: a robot with
+              heading -pi/2 commanded forward moved -y.
+              This is the simulator only. The radio is TASKS.md §6.
+
+## TASK-012 — `apps/wiggle.py`   [PASS]
+Verification: `python -m tbots.apps.wiggle --color blue --robot 2` ->
+              535 sightings, path 4.01 m, circle radius 0.51 m (commanded
+              0.50 m), exit 0. `--color yellow --robot 3` -> radius 0.50 m,
+              exit 0. Also `tests/test_network.py::test_wiggle_drives_a_circle`.
+Deviations:   Exits non-zero if the robot is not seen or barely moves, so it
+              doubles as a smoke test. Defaults to vision port 10020 (the
+              dev stack's ER-Force); `--vision-port 10006` for real vision.
+              Uses raw detections and the colour flag, not the tracker or
+              the referee, so it isolates the two wires.
+Notes:        Both fitted centres sit on the correct side of the robot's
+              heading (left of travel for a positive turn rate), which
+              checks the local-frame sign convention end to end.
+
+## TASK-020 — `perception/tracker.py`   [PASS]
+Verification: `pytest tests/test_tracker.py` -> 8 passed. The gate:
+              6 robots + ball from a real rSim run, 2 mm / 0.01 rad noise,
+              two overlapping cameras, 30 ms latency -> worst position error
+              over 2,000+ checks under 20 mm (14.4 mm worst over ten noise
+              seeds; robots 3.2 mm mean; ball 8.7 mm worst). Mutation check:
+              the same test with forward prediction disabled fails at
+              56.5 mm.
+Deviations:   - The gate's trajectory is CONTACT-FREE, and the test asserts
+                it. The first trajectory drove a robot into the boundary wall
+                at 1.8 m/s; it stopped in one frame (101 m/s^2) and the error
+                was 83 mm. No motion model predicts a wall 30 ms ahead, so
+                that measures the wall, not the tracker. Contacts are handled
+                by a manoeuvre reset (innovation > 3 cm -> forget velocity and
+                acceleration), tested separately: a 0 -> 5 m/s kick is back
+                under 2 cm within three frames.
+              - The gate is measured at `actuation_delay=0`, as written ("30
+                ms latency"). With 15 ms of actuation delay on top the worst
+                case is ~20 mm, at the gate's edge; reported here, not
+                asserted.
+              - Added `actuation_delay` and `TrackerConfig` to the
+                constructor. An unresolved Perspective raises.
+Notes:        - TUNING (sweeps over rSim trajectories, 45 ms horizon):
+                constant-acceleration beats constant-velocity for robots
+                (4.2 vs 5.7-6.2 mm mean, best of each);
+                LOW process noise wins because with 2-3 mm vision noise,
+                velocity noise times the prediction horizon costs more than
+                lag. Sudden changes are the manoeuvre reset's job.
+              - Heading is not in the gate: ~11 mrad mean, up to ~0.1 rad
+                while a robot reverses a 2 rad/s spin.
+              - `visible` is judged on capture time against the newest
+                frame (so ordinary latency is not a dropout), and every
+                object goes invisible if the newest frame is >150 ms old
+                (so losing vision does not leave the world looking fresh).
+              - Not done: TASK-075 `tracked` mode wiring (PerceptionSim
+                does not exist yet), and contact-aware prediction (walls).
+
+## TASK-014 — `NetworkBackend.observe()`   [PASS]
+Verification: `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py
+              tests/test_backend_parity.py` -> 7 passed, run twice: as blue
+              (no flip) and as yellow defending +x (flip), set through the
+              GC's /api/control. Parity trip (-1,-1) -> (2,1):
+                ER-Force, blue:           145 steps, 36 mm
+                ER-Force, yellow+flip:    148 steps, 35 mm
+                rSim:                     205 steps, 37 mm
+              Loop rate 67 Hz, paced by vision. Full suite: `make lint`
+              clean; `make test` 93 passed, 6 skipped (the live tests);
+              with TBOTS_NETWORK_TESTS=1, 99 passed.
+Deviations:   - THE PARITY TEST DOES NOT reset(). That needs
+                `SimulatorCommand` (TASK-015, blocked on the proto collision,
+                Step 7). Instead robot 0 drives to rSim's start pose with
+                GoToPoint, then makes the measured trip. Without that a
+                second run passed trivially: the robot was already there.
+              - `step()` polls the referee and passes the current
+                perspective to `send()` (TASK-011 deviation). `observe()`
+                and `step()` raise if the referee has not named TritonBots.
+              - The Division check keys on field length, width and goal
+                width, never the penalty-area scalars ER-Force leaves 0
+                (TASK-071 note). A DIV_A backend against the 2020B stack
+                raises "wrong Division"; tested.
+              - Telemetry: dribbler contact from the simulator's response,
+                attached to `us` robots only and copied to `has_ball`. It
+                trails the first command by one tick.
+              - Added `actuation_delay=0.0` to the constructor (TASKS §6).
+Notes:        FINDINGS, logged in TASKS.md and NOT fixed here:
+              - TASK-087: ER-Force on 2020B spawns 11 robots per team.
+              - TASK-088: `dt` is 1/60 but networked steps are ~15 ms.
+              - The GC ships with both team names "Unknown"; the live tests
+                fail (not skip) until one is "TritonBots".
+              ER-Force makes the trip in 145 steps (~2.2 s wall) against
+              rSim's 205 (3.4 s simulated). Same end accuracy. The cause is
+              NOT investigated -- a dynamics difference between the two
+              simulators is the likely one, and worth measuring before
+              trusting rSim-trained timing on the match path.
