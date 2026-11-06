@@ -148,3 +148,56 @@ def test_coach_rejects_bad_tactic_assignments():
     coach = Coach(FixedTactic([Assignment(9, SkillSpec("test_constant_command", {}))]), DIV_B)
     with pytest.raises(ValueError, match="unknown robot"):
         coach.tick(world())
+
+
+# -- TASK-086: the roles drive through the MPC planner ---------------------------
+
+class CountingCoach(Coach):
+    """Counts the commands the rule filter had to replace with a stop."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.stopped_by_filter = 0
+
+    def _filter(self, world: WorldState, command: RobotCommand) -> RobotCommand:
+        out = super()._filter(world, command)
+        if out == RobotCommand(command.robot_id) and command != out:
+            self.stopped_by_filter += 1
+        return out
+
+
+def _scripted_6v6(game: GameState, seconds: float = 10.0, avoid: bool = True):
+    from tbots.backends.base import Scenario
+    from tests.kinematic import KinematicWorld, Opponent
+
+    class Tactic(ScriptedTactic):
+        def decide(self, world: WorldState) -> list[Assignment]:
+            return [Assignment(a.robot_id, SkillSpec(a.skill.name,
+                                                     {**a.skill.kwargs, "avoid": avoid}))
+                    for a in super().decide(world)]
+
+    kickoff = Scenario.kickoff()
+    sim = KinematicWorld(dict(enumerate(kickoff.us)),
+                         {i: Opponent(x, y) for i, (x, y, _) in enumerate(kickoff.them)},
+                         ball=(0.0, 0.0), game=game)
+    coach = CountingCoach(Tactic(DIV_B), DIV_B)
+    world = sim.world()
+    for _ in range(int(seconds * 60)):
+        world = sim.step(coach.tick(world))
+    return sim, coach
+
+
+def test_scripted_6v6_through_the_coach_never_collides():
+    from tbots.core.geometry import ROBOT_RADIUS
+
+    running = GameState(play=Play.RUN, can_move=True, min_ball_distance=0.0, our_goalkeeper=0)
+    sim, _ = _scripted_6v6(running)
+    assert sim.min_clearance >= 2.0 * ROBOT_RADIUS
+
+
+def test_planner_keeps_the_rule_filter_idle_on_stop():
+    stop = GameState(play=Play.STOP, can_move=True, min_ball_distance=0.5, our_goalkeeper=0)
+    _, planned = _scripted_6v6(stop, seconds=4.0, avoid=True)
+    _, straight = _scripted_6v6(stop, seconds=4.0, avoid=False)
+    assert straight.stopped_by_filter > 0
+    assert planned.stopped_by_filter == 0

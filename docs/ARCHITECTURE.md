@@ -282,6 +282,27 @@ noise.
 driving to a point and transfers to hardware for free. Learning go-to-point
 is the most common way a student RL team wastes a season.
 
+The motion layer is `src/tbots/motion/` (TASK-086). It imports `core` only, so
+a skill, a state-machine tactic and a future RL "waypoint" codec can all
+drive through it. `MPCPlanner` is a **dynamic** sampling MPC:
+
+- every opponent and teammate is predicted forward over a one-second horizon
+  by an `ObstaclePredictor` (constant velocity by default, or constant
+  acceleration), with a clearance radius that grows with lookahead;
+- candidates are checked against those predictions in space-time, with a
+  swept check that cannot tunnel between samples;
+- it plans inside `core/limits.py`'s `MotionLimits`, measured from rSim
+  (`docs/RSIM_FACTS.md`, "Robot dynamics"), so the command sent is the motion
+  produced.
+
+The static rule regions (defense areas, the STOP ball circle) are routed
+round globally by `motion/route.py`, because a two-metre defense area is a
+local minimum for a one-second horizon. `GoToPoint(avoid=True)`, the
+default, drives through the planner, so every role that moves avoids
+without a tactic change. `hold=True` keeps station after arriving instead
+of reporting success, because the Coach parks a finished skill and a parked
+robot cannot dodge.
+
 **Skills** share one interface whether they are forty lines of geometry or a
 neural network: `reset`, `step`, `status`. `LearnedSkill` loads a checkpoint
 and implements the same protocol, so a policy trained on Tuesday runs in the
@@ -588,6 +609,7 @@ keeps our vision serialisation exercised constantly.
 | Vendored PPO, factorised heads, centralised critic (MAPPO) | Readable by recruits; a joint softmax over six robots is infeasible; SB3 fights custom heads. |
 | Booleans for kick and dribbler in the action space | On/off is what a skill decides; power comes from the skill's kwargs and the command keeps the float. |
 | Acceleration limits in the codec | The simulator must only execute what a motor can follow. |
+| Dynamic sampling MPC in `motion/`, inside `GoToPoint` | Opponents move, so obstacles are predicted trajectories, not circles. Sampling handles non-convex avoidance with numpy alone; free space falls back to the time-optimal profile; every role that moves gets it with no tactic change. |
 | Immutable builders and codecs, new name on change | Checkpoints survive months of commits; the SHA is recorded, never checked. |
 | Fixed scaling, no running normalisation | No invisible checkpoint state to export. |
 | Out-of-bounds: terminate for skills, restart for tactics | Short skill episodes are fine; 6v6 needs possession across restarts. |
@@ -615,6 +637,7 @@ tritonbots/
 │   ├── backends/           # base.py (Backend, SimBackend), rsim.py, network.py
 │   ├── net/                # sockets and protobuf glue
 │   ├── perception/         # tracker.py, sim.py (PerceptionSim)
+│   ├── motion/             # MPCPlanner, obstacle prediction, routing (imports core only)
 │   ├── skills/             # single-robot behaviours, learned.py
 │   ├── tactics/            # coach.py, base.py, scripted.py, learned.py, roles, restarts
 │   ├── rl/

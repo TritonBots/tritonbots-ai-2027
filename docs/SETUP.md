@@ -1300,7 +1300,7 @@ test: proto
 
 lint:
 	ruff check src tests
-	mypy src/tbots/core
+	mypy src/tbots/core src/tbots/backends src/tbots/motion src/tbots/skills/go_to_point.py src/tbots/rl/envs/base.py
 
 fmt:
 	ruff format src tests
@@ -1312,6 +1312,12 @@ tools:
 clean:
 	rm -rf src/tbots/_pb .pytest_cache .ruff_cache
 ```
+
+The `mypy` line is the current one. At this step it read
+`mypy src/tbots/core`; TASK-072 added the backends and the env base, and
+TASK-086 the motion planner and `GoToPoint`. None of those files exist yet
+when you reach this step, so on a fresh build start with `src/tbots/core`
+and widen the line as they land.
 
 ```bash
 git add scripts/gen_proto.sh Makefile && git commit -m "build: protobuf codegen"

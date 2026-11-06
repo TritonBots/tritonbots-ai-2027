@@ -272,6 +272,68 @@ print()
 print("ANSWER: pass dt as a float in SECONDS. int is still milliseconds.")
 print()
 print("=" * 70)
+print("PART 7 - robots are torque-limited: how hard can a command ramp?")
+print("=" * 70)
+print("Source: src/robosim/sslconfig.h, class Robot:")
+print("  wheelMotorMaxTorque = 0.070  // ... reduced to 3m/s2 accel")
+print("  wheelMotorMaxRPM    = 1557.0")
+print("rSim does not obey a velocity command instantly. The wheels are torque-")
+print("limited, and the limit depends on direction because the four wheels sit")
+print("at 60/135/225/300 degrees. The motion planner (tbots.motion) must only")
+print("ask for what every direction can follow, so this measures it.")
+print()
+
+
+def one_robot(x, y):
+    return robosim.SSL(FIELD_TYPE, 1, 0, DT, [4.0, 2.8, 0.0, 0.0],
+                       [[x, y, 0.0]], [])
+
+
+def one_action(vx, vy):
+    return [[0.0, vx, vy, 0.0] + [0.0] * (ACT_LEN - 4)]
+
+
+def state_v(sim):
+    s = np.asarray(sim.get_state())[BALL_STRIDE:BALL_STRIDE + ROBOT_STRIDE]
+    return float(s[3]), float(s[4]), float(s[2])
+
+
+print("7a. Step command to 2.0 m/s from rest, acceleration over ticks 2..12:")
+for deg in (0, 45, 90):
+    ux, uy = np.cos(np.radians(deg)), np.sin(np.radians(deg))
+    sim = one_robot(-1.2 * ux, -1.2 * uy)
+    sim.get_state()
+    along = []
+    for _ in range(13):
+        sim.step(one_action(2.0 * ux, 2.0 * uy))
+        vx, vy, _h = state_v(sim)
+        along.append(vx * ux + vy * uy)
+    print(f"  {deg:3d} deg   {(along[12] - along[2]) / (10 * DT):.2f} m/s^2")
+print()
+print("7b. Command ramped at a fixed rate to 2.5 m/s and back, 24 directions;")
+print("    worst |measured - commanded| velocity and worst heading drift:")
+for accel in (1.8, 1.9, 2.0, 2.5):
+    worst_err = worst_yaw = 0.0
+    for deg in range(0, 360, 15):
+        ux, uy = np.cos(np.radians(deg)), np.sin(np.radians(deg))
+        sim = one_robot(-1.2 * ux, -1.2 * uy)
+        sim.get_state()
+        v = 0.0
+        for k in range(160):
+            v = min(2.5, v + accel * DT) if k < 80 else max(0.0, v - accel * DT)
+            sim.step(one_action(v * ux, v * uy))
+            vx, vy, heading = state_v(sim)
+            if k > 3:
+                worst_err = max(worst_err, float(np.hypot(vx - v * ux, vy - v * uy)))
+            worst_yaw = max(worst_yaw, abs((heading + 180.0) % 360.0 - 180.0))
+    print(f"  {accel:.1f} m/s^2   velocity error {worst_err:.3f} m/s   "
+          f"heading drift {worst_yaw:.2f} deg")
+print()
+print("ANSWER: a command ramped at <= 1.9 m/s^2 is followed in every direction.")
+print("        Faster ramps saturate a wheel on the diagonals: the robot falls")
+print("        behind and YAWS although vangular = 0. Plan with 1.8 m/s^2.")
+print()
+print("=" * 70)
 print("SUMMARY")
 print("=" * 70)
 print(f"  Division B field_type   = {div_b_field_type}")
@@ -282,3 +344,4 @@ print("  state angles / poses    = degrees, heading in (0, 360], vdir in deg/s")
 print("  commanded vangular      = radians/second   <-- asymmetric, mind this")
 print("  get_state()             = must be called exactly once per step()")
 print(f"  timestep                = float seconds; {DT!r} s is exact 60 Hz")
+print("  isotropic accel limit   = <= 1.9 m/s^2 ramps track in every direction")

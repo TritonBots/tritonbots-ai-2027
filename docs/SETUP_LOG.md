@@ -1943,3 +1943,99 @@ Notes:        - FINDING, not fixed: because of cause 2, the MATCH view on
                 for this distro and restarting docker.socket (sudo) puts it
                 back. Until then `docker compose up -d vision-client-rsim`
                 would start on the wrong engine.
+
+## TASK-086 — Dynamic MPC obstacle avoidance            [PASS]
+Verification: `pytest tests/test_motion.py tests/test_motion_rsim.py
+              tests/test_skills.py tests/test_tactics.py
+              tests/test_backend_parity.py` -> all pass. `make lint` clean
+              (ruff; mypy now also covers src/tbots/motion and
+              skills/go_to_point.py). `make test` 105 passed, 1 skipped (the
+              existing network-parity skip); 72 passed before.
+              `scripts/verify_rsim.py` re-run: PARTS 1-6 byte-identical to the
+              recorded output, new PART 7 recorded in docs/RSIM_FACTS.md.
+
+              Every avoidance scenario has a control. The same planner with
+              the opponents HIDDEN from it makes contact, so no scenario passes
+              because nobody was in the way. Kinematic (continuous-time
+              clearance; contact = 0.18 m):
+                crossing     blind 0.016  avoid 0.308  arrives 3.17 s (3.08 blind)
+                head_on      blind 0.000  avoid 0.320  arrives 3.23 s
+                manoeuvring  blind 0.047  avoid 0.307  arrives 3.18 s
+                three        blind 0.044  avoid 0.318  arrives 3.20 s
+                static       blind 0.000  avoid 0.305  arrives 3.20 s
+              Real rSim, opponents commanded through SimBackend.step(...,
+              opponent_commands): crossing blind 0.178 / avoid 0.304; head-on
+              blind 0.177 / avoid 0.325; static blind 0.178 / avoid 0.322.
+              Planned commands are followed to < 0.15 m/s.
+
+              End to end, Coach + ScriptedTactic, 6v6, 20 s of real rSim, all
+              six opponents wandering at ~1 m/s, contact ticks counted at
+              d < 0.185 m:
+                avoid=False             us-us 1172  us-them  36  closest 0.177
+                avoid=True              us-us    0  us-them 212  closest 0.179
+                avoid=True, hold=True   us-us    0  us-them   0  closest 0.217
+              The 212 are explained under Notes.
+
+              `plan()` with 11 moving obstacles on the sampling path: median
+              0.41-0.46 ms, p95 0.85-1.0 ms. Free space (nominal shortcut):
+              median 0.27-0.31 ms. Throughput, 6v6 Coach, single process,
+              noisy on this WSL2 box (bare rSim measured 214-426 steps/s
+              across runs): avoid=False 188-248, avoid=True 126-167,
+              hold=True 125-137 steps/s. So avoidance costs about 30%. Use
+              `MPCConfig.replan_every` if training throughput needs it back.
+Deviations:   1. `core/limits.py` (`MotionLimits`) is TASK-078's territory: its
+                 codec is specified to take "acceleration limits from core".
+                 It is added here because the planner needs it first. It is
+                 pure data, and TASK-078 should reuse it, not define its own.
+              2. The plan assumed max_a ~3 m/s^2. rSim was measured first
+                 (CLAUDE.md: do not reason about rSim). Its wheels are
+                 torque-limited and direction-dependent: 3.34 m/s^2 forward,
+                 2.41 sideways, 2.11 at 45 deg. A diagonal step command YAWS
+                 the robot by up to ~0.9 rad. Ramps <= 1.9 m/s^2 track in all
+                 24 directions tested, and 2.0 does not, a sharp cliff. Planner
+                 default 1.8. New RSIM_FACTS section "Robot dynamics" and
+                 verify_rsim.py PART 7.
+              3. Added `motion/route.py`, a visibility-graph route round the
+                 STATIC keep-outs, which the plan did not have. A non-keeper
+                 crossing in front of our goal stalled at the edge of the
+                 defense area, a local minimum for a one-second horizon. It
+                 runs only when the straight line is blocked. Moving
+                 obstacles are still MPC-only.
+              4. The free-space gate compares against the analytic time-optimal
+                 bound under max_v/max_a (within 15%), not against
+                 avoid=False. The old P-controller has no acceleration limit,
+                 so in the kinematic world it teleports to 2.5 m/s and is not a
+                 meaningful baseline.
+              5. GoToPoint(avoid=True) is now the DEFAULT, a behaviour change
+                 for every caller. With avoid=True, success also requires the
+                 last command <= 0.1 m/s, so the Coach's next stop() is not a
+                 velocity cliff. avoid=False keeps the old code path. New
+                 kwargs, all plain values so SkillSpec equality still holds:
+                 avoid, avoid_ball, predictor ("constant_velocity" |
+                 "constant_acceleration"), max_a, geometry (default DIV_B),
+                 hold.
+              6. `hold=True` was not in the plan. It was added after the end-to-
+                 end run showed parked robots being hit (Notes).
+              7. SETUP.md Step 7's Makefile record was already stale (it showed
+                 `mypy src/tbots/core` only; TASK-072 widened it). Updated to
+                 the current line, with a note on when each path lands.
+Notes:        - FINDING (TASK-077 / TASK-041), not fixed: the Coach parks a skill
+                that reports success and never steps it again while its
+                SkillSpec is unchanged. ScriptedTactic's keeper and support
+                roles target fixed points, so once they arrive they stand
+                still, and a moving opponent drives into them. All 212 contact
+                ticks above were robot 3 in that state. GoToPoint(hold=True)
+                avoids it, but whether ScriptedTactic should pass it, or the
+                Coach should re-step finished skills, is a decision for those
+                tasks. Recorded in TASKS.md.
+              - The planner does not know the Coach's STOP speed limit
+                (1.5 m/s, an open problem). The Coach scales the command, and
+                the planner resyncs to the measured velocity when the two
+                differ by > 0.5 m/s. That is correct, but not as smooth as
+                planning at the lower speed would be.
+              - Teammates are predicted at constant velocity like opponents.
+                Sharing planned trajectories (last_trajectory) through the
+                Coach is a follow-up in TASKS.md.
+              - tests/kinematic.py is a ground-truth kinematic world for motion
+                tests, not a stand-in for rSim; every important scenario is
+                repeated in rSim.

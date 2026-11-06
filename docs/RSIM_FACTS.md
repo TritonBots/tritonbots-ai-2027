@@ -1,6 +1,6 @@
 # rSim facts — VERIFIED, do not guess
 
-Verified on: 2026-09-07 (first verified 2026-08-10)
+Verified on: 2026-11-05 (first verified 2026-08-10; PART 7 added 2026-11-05)
 rSim commit: `56d02532f406987a9b9fee59b12da9b33468af1e` (our fork, YashTandon05/rSim)
 Python 3.11.15, ODE 0.16.2 double-precision from `/usr/local/lib/libode.so.8`
 
@@ -135,6 +135,34 @@ constructor was used — assert against it rather than recomputing.
 - rSim's Division B geometry agrees with `core/geometry.py`'s `DIV_B`
   (goal_width 1.0, penalty 1.0 x 2.0) and its Division A with `DIV_A`
   (goal_width 1.8, penalty 1.8 x 3.6).
+
+---
+
+## Robot dynamics: rSim enforces its own acceleration limit
+
+Verified 2026-11-05 (PART 7 of `scripts/verify_rsim.py`).
+
+- **A velocity command is a setpoint, not a velocity.** The wheels are
+  torque-limited (`wheelMotorMaxTorque = 0.070` in `sslconfig.h`, commented
+  "reduced to 3m/s2 accel"; `wheelMotorMaxRPM = 1557.0`). A step command to
+  2.0 m/s from rest accelerates at **3.34 m/s² forward, 2.41 m/s² sideways,
+  2.11 m/s² at 45°** (measured over ticks 2 to 12). The wheel layout
+  (60/135/225/300°) is not symmetric, so the limit depends on direction.
+- **Saturating a wheel makes the robot yaw.** A step command on a diagonal
+  turns the robot by up to ~0.9 rad within a second, even though the command
+  says `vangular = 0`. Because the command is in the robot frame, the
+  direction of travel then rotates with the robot.
+- **A command ramped at ≤ 1.9 m/s² is followed in every direction.** Ramped
+  to 2.5 m/s and back down, across 24 directions: at 1.8 m/s² the worst
+  velocity error is 0.049 m/s and the worst heading drift 1.1°; at 1.9 m/s²
+  it is 0.057 m/s and 1.3°; at 2.0 m/s² it is 0.273 m/s and 6.3°; at
+  2.5 m/s² it is 1.5 m/s and 36°. The cliff between 1.9 and 2.0 is sharp.
+- **2.5 m/s is reachable** forward and sideways. The top speed under a
+  saturating command is ~4.7 m/s forward.
+
+Consequence in code: `core/limits.py` defaults `max_a = 1.8 m/s²`, and
+the motion planner (`tbots.motion`) never commands a velocity change
+steeper than that, so the command it sends is the motion rSim produces.
 
 ---
 
@@ -300,6 +328,33 @@ ramp is not in the number:
 ANSWER: pass dt as a float in SECONDS. int is still milliseconds.
 
 ======================================================================
+PART 7 - robots are torque-limited: how hard can a command ramp?
+======================================================================
+Source: src/robosim/sslconfig.h, class Robot:
+  wheelMotorMaxTorque = 0.070  // ... reduced to 3m/s2 accel
+  wheelMotorMaxRPM    = 1557.0
+rSim does not obey a velocity command instantly. The wheels are torque-
+limited, and the limit depends on direction because the four wheels sit
+at 60/135/225/300 degrees. The motion planner (tbots.motion) must only
+ask for what every direction can follow, so this measures it.
+
+7a. Step command to 2.0 m/s from rest, acceleration over ticks 2..12:
+    0 deg   3.34 m/s^2
+   45 deg   2.11 m/s^2
+   90 deg   2.41 m/s^2
+
+7b. Command ramped at a fixed rate to 2.5 m/s and back, 24 directions;
+    worst |measured - commanded| velocity and worst heading drift:
+  1.8 m/s^2   velocity error 0.049 m/s   heading drift 1.13 deg
+  1.9 m/s^2   velocity error 0.057 m/s   heading drift 1.28 deg
+  2.0 m/s^2   velocity error 0.273 m/s   heading drift 6.25 deg
+  2.5 m/s^2   velocity error 1.498 m/s   heading drift 35.57 deg
+
+ANSWER: a command ramped at <= 1.9 m/s^2 is followed in every direction.
+        Faster ramps saturate a wheel on the diagonals: the robot falls
+        behind and YAWS although vangular = 0. Plan with 1.8 m/s^2.
+
+======================================================================
 SUMMARY
 ======================================================================
   Division B field_type   = 1
@@ -310,4 +365,5 @@ SUMMARY
   commanded vangular      = radians/second   <-- asymmetric, mind this
   get_state()             = must be called exactly once per step()
   timestep                = float seconds; 0.016666666666666666 s is exact 60 Hz
+  isotropic accel limit   = <= 1.9 m/s^2 ramps track in every direction
 ```

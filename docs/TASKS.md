@@ -59,6 +59,7 @@ it, because that is where real runs happen.
 | TASK-004 | CI pins the verified rSim field type, layouts, action offsets, and 60 Hz timestep; it also runs the verification probe. | `tests/test_rsim_backend.py`, `.github/workflows/ci.yml` |
 | TASK-073 | `as_opponent()` rotates a world by 180° and exchanges `us` and `them` for self-play. | `tests/test_perspective.py` |
 | TASK-074 | Frozen perception dataclasses, capture time, and telemetry are part of the core world contract. | `tests/test_core.py`, `mypy src/tbots/core` |
+| TASK-086 | Dynamic MPC obstacle avoidance: `motion/` (`MPCPlanner`, `ObstaclePredictor`, routing round static keep-outs) and `core/limits.py`. `GoToPoint(avoid=True)` is the default, so every role avoids moving robots and rule regions. `hold=True` keeps station. rSim follows ≤ 1.9 m/s² ramps; the planner uses 1.8. | `tests/test_motion.py`, `tests/test_motion_rsim.py`, `docs/RSIM_FACTS.md` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -143,13 +144,14 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Notes |
 |---|---|---|
-| **TASK-077** | **The `Coach`** in `tactics/coach.py`: owns tactic, live skill instances, roles, restarts; `tick(world) -> list[RobotCommand]`; fixed 4 Hz decisions; skill persistence by `SkillSpec` equality; the rule filter (HALT, 0.5 m on STOP, 0.2 m from the opponent defense area, defense-area occupancy, stop speed). Done when: a test drives the Coach through every `Play` and no command violates the filtered rule. |
+| **TASK-077** | **FINDING (TASK-086):** a skill that reports `success` is parked, and the Coach never steps it again while its `SkillSpec` is unchanged, so an arrived robot cannot dodge. In 20 s of 6v6 against moving opponents, every one of 212 contact ticks was a parked robot; with `GoToPoint(hold=True)` there were none. Decide whether finished skills are re-stepped, or whether station-keeping roles must use `hold`. **The `Coach`** in `tactics/coach.py`: owns tactic, live skill instances, roles, restarts; `tick(world) -> list[RobotCommand]`; fixed 4 Hz decisions; skill persistence by `SkillSpec` equality; the rule filter (HALT, 0.5 m on STOP, 0.2 m from the opponent defense area, defense-area occupancy, stop speed). Done when: a test drives the Coach through every `Play` and no command violates the filtered rule. |
 | **TASK-051** | **`rl/envs/tactics_env.py`**: drives the Coach, accumulates reward over the 15 inner ticks, out-of-bounds defaults to restart via `place()`. Needs TASK-077 and the set encoder. |
 | **TASK-052** | **`SyntheticReferee`**: `GameState` from truth; excessive dribbling, double touch, no progress as `done` reasons with a free-kick restart; episodes may start in restart states. Contact fouls skipped (open problem). |
 | **TASK-083** | **Set encoder** for tactics observations: DeepSets or attention pool, fixed-size output, pointer-style targets for `pass_to` and `mark`. Region and zone discretisation for `dribble_toward` and `reposition`. |
 | **TASK-084** | **Factorised MAPPO heads**: per-robot independent heads on the shared encoder, joint log-prob as a sum, centralised critic, through the TASK-056 distribution interface without touching the trainer loop. |
 | **TASK-057** | **Opponent pool**: uniform over frozen checkpoints plus the scripted baseline; config override pins one; opponent Coach runs on `as_opponent(world)` with ground truth. |
-| **TASK-041** | **`tactics/scripted.py`**: the baseline opponent. Nothing is evaluable at 6v6 without it. Do not let it slip past week two. |
+| **TASK-041** | **FINDING (TASK-086):** the keeper and support roles target fixed positions; they should pass `hold=True`, or they stand still and get run into (see TASK-077). **`tactics/scripted.py`**: the baseline opponent. Nothing is evaluable at 6v6 without it. Do not let it slip past week two. |
+| TASK-086 follow-ups | From the dynamic MPC (done, §2). (1) A "waypoint" action codec that drives `MPCPlanner` from an RL policy, with TASK-078. (2) A state-machine tactic whose states emit `go_to_point` specs and transition on `status()` / `arrived`. (3) The Coach sharing each skill's `MPCPlanner.last_trajectory`, so teammates plan against each other's plans rather than constant-velocity guesses (TASK-077). |
 | TASK-030 to 037 | Skill implementations: `FacePoint`, `Shoot`, `PassTo`, `ReceivePass`, `Dribble`, `Intercept`, `Goalkeep`, `LearnedSkill`. Each learned one is a `SkillTask`. Classic recruit work. |
 | TASK-040, 042, 043 | Roles (Hungarian), learned-tactic wrapper, restart routines. All live inside the Coach. |
 | TASK-014 | `NetworkBackend.observe()`: merge frames, run the tracker, attach `GameState`, read geometry from the wire and fail on a Division mismatch. Unblocks the two-backend parity test. |
