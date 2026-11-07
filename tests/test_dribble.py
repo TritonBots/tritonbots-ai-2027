@@ -1,9 +1,10 @@
-"""Dribble skill: outputs robot-frame velocities, executes a nudge before hitting the 1 m rule limit, and counts as a success once the ball reaches the target."""
+"""Dribble skill: robot-frame output, nudge before the 1 m rule, success at target,
+observation layout, and that the residual is bounded by the rate limit."""
 
 import math
 
 from tbots.core.state import BallState, RobotState, WorldState
-from tbots.skills.dribble import NUDGE_AT, Dribble
+from tbots.skills.dribble import A_CARRY, DT, NUDGE_AT, OBS_SIZE, Dribble
 
 
 def world(rx, ry, theta, bx, by, has_ball=True):
@@ -36,3 +37,20 @@ def test_success_at_target():
     s.reset(world(0.0, 0.0, 0.0, 0.1, 0.0), 0)
     s.step(world(0.8, 0.0, 0.0, 0.9, 0.0), 0)
     assert s.status() == "success"
+
+
+def test_residual_sees_fixed_layout_and_is_rate_limited():
+    seen = []
+
+    def full_throttle(obs):
+        seen.append(obs)
+        return [1.0, 1.0, 1.0]          # the largest correction a policy can ask for
+
+    w = world(0.0, 0.0, 0.0, 0.1, 0.0)
+    s = Dribble(target=(3.0, 0.0), residual=full_throttle)
+    s.reset(w, 0)
+    cmd = s.step(w, 0)
+    assert len(seen[0]) == OBS_SIZE
+    # even a maximal residual cannot change velocity faster than the carry limit
+    assert math.hypot(cmd.vx, cmd.vy) <= A_CARRY * DT + 1e-9
+    assert s.kick_v == 0.40              # the speed the residual was trained with
