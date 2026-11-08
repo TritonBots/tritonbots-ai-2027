@@ -139,3 +139,12 @@ def test_keeper_claims_and_clears_a_loose_ball_near_goal(backend):
     assert not left_area
     assert not DIV_B.inside_our_defense_area(world.ball.x, world.ball.y)
     assert world.ball.x > -2.0
+
+
+def test_duel_app_runs_and_tallies_every_duel():
+    """`python -m tbots.apps.duel` end to end, headless: real rSim, both skills."""
+    from tbots.apps.duel import run_duels
+
+    tally = run_duels(n=3, seconds=10.0, seed=1, verbose=False)
+    assert sum(tally.values()) == 3
+    assert set(tally) <= {"conceded", "wide", "cleared_out", "timeout"}

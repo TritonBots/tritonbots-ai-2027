@@ -2205,3 +2205,16 @@ Notes:        The 20 deg/s limit dominates how both skills look: a keeper
               cannot square up to a clearance, and an attacker behind the
               ball faces a 9 s turn. If that number is wrong, it is the one to
               re-measure first.
+
+## hardcoded-migration — `apps/duel.py`   [PASS]
+Verification: `python -m tbots.apps.duel --n 5` -> 5 duels tallied
+              (2 conceded, 2 cleared out, 1 timeout at 20 s);
+              `pytest tests/test_goalkeep.py::test_duel_app_runs_and_tallies_every_duel`
+              passes. `make lint` clean; `make test` 110 passed, 6 skipped.
+Deviations:   Not a TASKS.md task; requested directly. `--watch` (real-time
+              vision to http://localhost:8083) is not exercised by the test:
+              it needs the compose stack's vision client. It reuses
+              viz_rsim's publisher, port and refuse-if-occupied check.
+Notes:        Usage: `python -m tbots.apps.duel [--n 20] [--seconds 20]
+              [--seed 1] [--watch]`. `run_duels()` returns the tally for
+              scripting.
