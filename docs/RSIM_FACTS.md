@@ -135,6 +135,25 @@ constructor was used — assert against it rather than recomputing.
 - rSim's Division B geometry agrees with `core/geometry.py`'s `DIV_B`
   (goal_width 1.0, penalty 1.0 x 2.0) and its Division A with `DIV_A`
   (goal_width 1.8, penalty 1.8 x 3.6).
+- **A rolling ball slows by about 0.7 m/s every second, after a short,
+  much faster initial loss.** Measured 2026-11-07 through `RSimBackend` at
+  60 Hz, ball placed with velocity on an empty Division B field:
+  | Placed at | after 0.5 s | after 1 s | after 2 s |
+  |---|---|---|---|
+  | 1.0 m/s | 0.37 | 0.02 | 0 |
+  | 2.0 m/s | 1.08 | 0.73 | 0.03 |
+  | 4.0 m/s | 2.51 | 2.16 | 1.46 |
+  Between 0.5 s and 2 s every row loses ~0.7 m/s per second, so the rolling
+  phase is close to constant deceleration, not rcssserver's per-cycle
+  multiplicative decay. The first fraction of a second loses far more, and
+  so does a kick: a 4.0 m/s flat kick left the robot at 3.90 m/s and was at
+  2.73 m/s ten ticks (1/6 s) later. `skills/goalkeep.py` models the whole
+  trajectory at 0.7 m/s², which overestimates how far a shot travels -- the
+  safe direction for a keeper deciding whether to block.
+- **A flat kick fires on contact.** Holding `kick_speed > 0` while driving
+  into the ball releases it the tick the ball touches the kicker, at about
+  the commanded speed (4.0 commanded, 3.90 measured). The dribbler sets
+  `is_touching_ball`, which `RSimBackend` reports as `has_ball`.
 
 ---
 

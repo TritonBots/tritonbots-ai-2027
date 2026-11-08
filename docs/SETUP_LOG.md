@@ -2094,3 +2094,64 @@ Notes:        FINDINGS, logged in TASKS.md and NOT fixed here:
               NOT investigated -- a dynamics difference between the two
               simulators is the likely one, and worth measuring before
               trusting rSim-trained timing on the match path.
+
+## hardcoded-migration — goalkeeper and attacker from ai-team   [PASS]
+Verification: `pytest tests/test_goalkeep.py tests/test_attack.py` -> 16
+              passed (real rSim, no mocks). `make lint` clean; `make test`
+              109 passed, 6 skipped (the live network tests).
+              Wider sweeps, run by hand and not in CI:
+                Attack, empty goal, 30 random starts, 15 s:  30 goals.
+                Goalkeep, 40 random on-target shots at 3-6 m/s: 40 saves;
+                  the same shots with the keeper parked: 35 scored.
+                Goalkeep (us) vs Attack (them via as_opponent), 20 duels,
+                  20 s each: 17 cleared, 2 still live, 1 conceded.
+Deviations:   - NOT a TASKS.md task. Requested directly: import the
+                goalkeeper and attacker from https://github.com/TritonBots/ai-team.
+                Sources: `ai_interface/goalie.py` on `support` (2026-06-17,
+                newest keeper) and `ai_interface/attacker.py` (SmartAttacker)
+                on `minghan-foundation` (2026-05-01, newest attacker). Older
+                copies on `hc-goalkeeper`, `hc-play`, `kicking_bug`,
+                `minghan-foundation-wing` and `wing-branch` were read and
+                superseded by these.
+              - PORTED, NOT COPIED. ai-team targets rcssserver: string
+                commands (`dash`/`turn`/`kick`/`catch`), 0.1 s cycles, a 10x
+                Division B pitch (90 x 60 units). Lengths are x0.1 m and
+                units/cycle read as m/s; shot score weights are x10 per meter
+                so scoring is unchanged. Commands are `RobotCommand`s built on
+                `GoToPoint`, with the dribbler and kicker.
+              - Goalkeep is hand-written; TASK-036 calls for a learned keeper.
+                Kept the class name and replaced the stub, so `goalkeep` is a
+                usable baseline until a learned one exists.
+              - Attack is a new skill (`attack`); `Shoot` (TASK-031) is still
+                a stub.
+              - Keeper changes from the rcss original: no side inference
+                (Rule 3); ball velocity from the tracker, not position
+                differencing; rolling-deceleration ball model (new fact in
+                RSIM_FACTS); targets clamped to our defense area; CHARGE fires
+                for any slow, uncontested ball in our defense area, not within
+                0.6 m of goal (otherwise a ball stopped there sits forever);
+                keeper speed 1.5 m/s, not rcss's 0.35; block hysteresis 12
+                ticks (0.2 s, as before).
+              - Attacker changes: the rcss "deep approach" latch is a
+                geometric on-the-line test, because the latch reset every
+                ballless tick and the robot never finished staging. Chase
+                runs only for a moving ball; a still one is staged directly.
+                Lane-block check covers every opponent, not one named defender.
+                Never enters their defense area (SSL foul). Kick 5.0 m/s and
+                dribble pushes 1.0 m/s (rcss powers are 1.35-1.6 and 0.6 m/s,
+                which die on rSim's carpet). Aim inset 0.35 m (rcss 0.45) and
+                kick alignment 2 deg (rcss 1 deg) because rSim kicks scatter:
+                at 0.40 a shot from the touchline hit the post. Dropped: the
+                kickoff special case (restarts are TASK-043) and "defender near
+                ball, run to (10, 0)".
+              - `GameState` has no `their_goalkeeper`; the attacker treats
+                their robot nearest their goal as the keeper. `core` untouched.
+Notes:        Neither skill is wired into `ScriptedTactic` or the Coach.
+              `tactics/scripted.py` (TASK-041) still sends the keeper and the
+              chaser plain `go_to_point`; switching them to `goalkeep` and
+              `attack` changes the baseline opponent, so that is a decision
+              for whoever owns TASK-041/057.
+              Not ported: ai-team's `support/` set-play dispatcher (Kickoff,
+              FreeKick, Penalty, ...) and the RL trainers -- outside the
+              request, but they map onto TASK-043 and are worth a look.
+              Not tested on ER-Force / the network backend.
