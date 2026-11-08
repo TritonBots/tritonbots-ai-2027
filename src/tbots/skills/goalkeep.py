@@ -1,11 +1,14 @@
 """Defend our goal. Hand-written baseline, ported from the ai-team rcssserver keeper.
 
 Source: ``ai_interface/goalie.py`` on the ``support`` branch of
-https://github.com/TritonBots/ai-team (2026-06-17). That code drove a 10x
-scaled Division B pitch in rcssserver (90 x 60 units, 0.1 s cycles), so every
-length below is the original constant times 0.1 m and every speed in
-units/cycle is the same number in m/s. Constants that did not survive the
-move to rSim say so where they are defined.
+https://github.com/TritonBots/ai-team (2026-06-17). The tournament copy on
+``ai-hardcoded`` is the same state machine and constants, built with all
+defaults by ``competition_ai.py``; it adds only an optional ``reaction_lag``
+(default 0, not ported). That code drove a 10x scaled Division B pitch in
+rcssserver (90 x 60 units, 0.1 s cycles), so every length below is the
+original constant times 0.1 m and every speed in units/cycle is the same
+number in m/s. Speed, turn-rate and kick limits are the robot's, from
+``skills/hardware.py``.
 
 Decision making is a small state machine evaluated every tick:
 
@@ -15,8 +18,8 @@ Decision making is a small state machine evaluated every tick:
   get there; move at full speed to the earliest reachable point on its path.
 - CLEAR: the ball is held, or close and slow; dribble it, turn to a safe
   upfield direction, and kick it clear.
-- CHARGE: a loose, slow ball in our defense area with no opponent contesting
-  it; advance to claim it.
+- CHARGE: a loose, slow ball within 0.6 m of our goal with no opponent
+  contesting it; advance to claim it.
 
 What changed in the port: we always defend -x (Rule 3), so side inference is
 gone; ball velocity comes from the tracker instead of differencing positions;
@@ -37,6 +40,12 @@ from tbots.core.state import RobotState, WorldState
 from tbots.core.units import angle_diff, wrap_angle
 from tbots.skills.base import Skill, SkillStatus, register_skill
 from tbots.skills.go_to_point import GoToPoint
+from tbots.skills.hardware import (
+    MAX_ANGULAR_SPEED,
+    MAX_LINEAR_SPEED,
+    RECEPTION_HALF_ANGLE,
+    kick_speed,
+)
 
 KeeperMode = Literal["POSITION", "BLOCK", "CLEAR", "CHARGE"]
 
@@ -126,18 +135,22 @@ class Goalkeep(Skill):
         far_zone: float = 2.5,
         shot_speed: float = 0.3,
         goal_margin: float = 0.15,
-        # rcss used 0.35 units/cycle (0.35 m/s), the speed of an rcss player.
-        # rSim robots reach 3 m/s within a second; 1.5 m/s is a conservative
-        # average over a short dash from rest.
-        keeper_speed: float = 1.5,
+        # KEEPER_SPEED = 0.35 units/cycle: the planning speed for "can I get
+        # there before the ball", deliberately below the 1.05 top speed to
+        # allow for accelerating from rest.
+        keeper_speed: float = 0.35,
         catch_dist: float = 0.12,
+        # Goalie(charge_distance=6.0), the default competition_ai.py used.
+        charge_distance: float = 0.6,
         charge_ball_speed: float = 0.5,
         contest_radius: float = 0.3,
-        clear_kick_speed: float = 5.0,
-        clear_align_tol: float = math.radians(6.0),
+        # Player.kick_power = 100 -> measured 5.75 m/s exit speed.
+        clear_kick_speed: float = kick_speed(100.0),
+        # Player.angle_tolerance = 5 deg: kick only within this of the target.
+        clear_align_tol: float = math.radians(5.0),
         block_release_ticks: int = 12,
-        max_v: float = 2.5,
-        block_max_v: float = 3.0,
+        max_v: float = MAX_LINEAR_SPEED,
+        max_w: float = MAX_ANGULAR_SPEED,
     ) -> None:
         self.geometry = geometry
         self.max_step_out = min(max_step_out, geometry.penalty_depth - ROBOT_RADIUS)
@@ -147,6 +160,7 @@ class Goalkeep(Skill):
         self.goal_margin = goal_margin
         self.keeper_speed = keeper_speed
         self.catch_dist = catch_dist
+        self.charge_distance = charge_distance
         self.charge_ball_speed = charge_ball_speed
         self.contest_radius = contest_radius
         self.clear_kick_speed = clear_kick_speed
@@ -154,7 +168,7 @@ class Goalkeep(Skill):
         # rcss released a block after 2 quiet cycles (0.2 s); 12 ticks at 60 Hz.
         self.block_release_ticks = block_release_ticks
         self.max_v = max_v
-        self.block_max_v = block_max_v
+        self.max_w = max_w
 
         self.mode: KeeperMode = "POSITION"
         self._release = 0
@@ -208,7 +222,7 @@ class Goalkeep(Skill):
             return True
         dx, dy = world.ball.x - me.x, world.ball.y - me.y
         d = math.hypot(dx, dy)
-        facing = abs(angle_diff(math.atan2(dy, dx), me.theta)) < math.radians(25.0)
+        facing = abs(angle_diff(math.atan2(dy, dx), me.theta)) < RECEPTION_HALF_ANGLE
         return facing and d < ROBOT_RADIUS + BALL_RADIUS + 0.015
 
     def _ball_speed(self, world: WorldState) -> float:
@@ -249,11 +263,10 @@ class Goalkeep(Skill):
             return "CLEAR"
         if self.shot_crossing(world) is not None:
             return "BLOCK"
-        # rcss charged inside a 6-unit (0.6 m) radius of the goal. In SSL the
-        # whole defense area is the keeper's alone -- a ball left stopped in
-        # it is one nobody else may fetch -- so the area is the trigger.
-        if (speed < self.charge_ball_speed
-                and self.geometry.inside_our_defense_area(world.ball.x, world.ball.y)
+        gx, gy = self.geometry.our_goal
+        ball_goal = math.hypot(world.ball.x - gx, world.ball.y - gy)
+        if (ball_goal < self.charge_distance
+                and speed < self.charge_ball_speed
                 and not self._opponent_near_ball(world)):
             return "CHARGE"
         return "POSITION"
@@ -322,8 +335,8 @@ class Goalkeep(Skill):
     # -- per-mode commands ----------------------------------------------------
 
     def _drive(self, world: WorldState, me: RobotState, target: tuple[float, float],
-               face: float, max_v: float, kp: float = 3.0) -> RobotCommand:
-        return GoToPoint(target=target, face=face, max_v=max_v,
+               face: float, kp: float = 3.0) -> RobotCommand:
+        return GoToPoint(target=target, face=face, max_v=self.max_v, max_w=self.max_w,
                          kp_pos=kp, pos_tol=0.02).step(world, me.robot_id)
 
     def _face_ball(self, world: WorldState, me: RobotState) -> float:
@@ -341,7 +354,7 @@ class Goalkeep(Skill):
             target = bisector_target(world.ball.pos, self.geometry, self.max_step_out,
                                      self.close_zone, self.far_zone)
         target = self._clamp_to_area(*target)
-        return self._drive(world, me, target, self._face_ball(world, me), self.max_v)
+        return self._drive(world, me, target, self._face_ball(world, me))
 
     def _block(self, world: WorldState, me: RobotState) -> RobotCommand:
         half = self.geometry.goal_width / 2.0
@@ -351,8 +364,7 @@ class Goalkeep(Skill):
         ty = _clamp(ty, -half - 0.05, half + 0.05)
         target = self._clamp_to_area(tx, ty)
         # Full speed: reaching the line beats a smooth arrival.
-        return self._drive(world, me, target, self._face_ball(world, me),
-                           self.block_max_v, kp=6.0)
+        return self._drive(world, me, target, self._face_ball(world, me), kp=6.0)
 
     def _clear(self, world: WorldState, me: RobotState, held: bool) -> RobotCommand:
         if held:
@@ -362,13 +374,13 @@ class Goalkeep(Skill):
             err = angle_diff(want, me.theta)
             kick = self.clear_kick_speed if abs(err) < self.clear_align_tol else 0.0
             return RobotCommand(robot_id=me.robot_id, vx=0.15,
-                                vtheta=_clamp(4.0 * err, -3.0, 3.0),
-                                dribbler=1.0, kick_speed=kick).clamped()
+                                vtheta=_clamp(4.0 * err, -self.max_w, self.max_w),
+                                dribbler=1.0, kick_speed=kick).clamped(max_w=self.max_w)
         # Close but not held: ease onto the ball with the dribbler on.
-        cmd = self._drive(world, me, world.ball.pos, self._face_ball(world, me), 0.8)
+        cmd = self._drive(world, me, world.ball.pos, self._face_ball(world, me))
         return replace(cmd, dribbler=1.0)
 
     def _charge(self, world: WorldState, me: RobotState) -> RobotCommand:
         target = self._clamp_to_area(*world.ball.pos)
-        cmd = self._drive(world, me, target, self._face_ball(world, me), 1.5, kp=4.0)
+        cmd = self._drive(world, me, target, self._face_ball(world, me), kp=4.0)
         return replace(cmd, dribbler=1.0)

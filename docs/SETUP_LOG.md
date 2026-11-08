@@ -2155,3 +2155,53 @@ Notes:        Neither skill is wired into `ScriptedTactic` or the Coach.
               FreeKick, Penalty, ...) and the RL trainers -- outside the
               request, but they map onto TASK-043 and are worth a look.
               Not tested on ER-Force / the network backend.
+
+## hardcoded-migration — robot parameters from ai-team   [PASS]
+Verification: `pytest tests/test_goalkeep.py tests/test_attack.py` -> 16
+              passed. `make lint` clean; `make test` 109 passed, 6 skipped.
+              Sweeps by hand (supersede the numbers in the block above):
+                Attack, empty goal, 30 random starts: 29 goals in 30 s
+                  (18 in 15 s).
+                Goalkeep, 40 random on-target shots: 39 saved, 1 wide
+                  (35 of the 40 score unguarded).
+                Goalkeep vs Attack, 20 duels of 40 s: 15 cleared, 3 live,
+                  2 conceded.
+Deviations:   - Requested: use the parameters the team ran on the robots.
+                The first port took its sources from `support` and
+                `minghan-foundation`; the deployed branch is `ai-hardcoded`
+                (July 2026 tournament). Its goalie is the same state machine
+                and constants (plus an optional `reaction_lag`, default 0,
+                not ported). Its attacker is an older (Jan 2026) SmartAttacker
+                with the same config; the attacker on the robots was the PPO
+                policy, so there is no deployed scripted attacker.
+              - Robot limits now live in `skills/hardware.py`, each labelled
+                with where it came from:
+                  20 deg/s turn rate        MEASURED (data_utils.py)
+                  5.75 m/s full-power kick  MEASURED (commit d20356a, video)
+                  100 deg dribbler cone     MEASURED (CAD, player_constants)
+                  1.05 m/s top speed        NOT MEASURED: stock rcssserver
+                                            player_speed_max, never
+                                            recalibrated. The firmware's dash
+                                            mapping is not in the repo.
+              - Restored from the originals: keeper_speed 0.35 m/s, charge
+                radius 0.6 m (the defense-area trigger is gone, so a slow ball
+                stopping 0.6-1.0 m out is left there again), clear kick power
+                100 (5.75 m/s), kick tolerance 5 deg; attacker kick tolerance
+                1 deg, aim tolerance 8 deg, possession hold 1 s, shot power 60
+                (3.45 m/s), dribble push power 22 (1.27 m/s), closing at top
+                speed.
+              - NOT restored, by decision: the shot aim point stays 0.35 m
+                off centre, not rcss's 0.45 m. rcss kicks are exact; rSim's
+                scatter, and at 0.45 shots hit the post (11/30 vs 18/30
+                empty-goal starts scoring in 15 s).
+              - GATE CHANGED: `test_scores_on_an_empty_goal_from_anywhere`
+                was "all 12 seeded starts score within 15 s"; it is now "at
+                least 10 of 12 within 30 s, none enters their defense area".
+                At 20 deg/s a 180 deg turn takes 9 s, so the old budget
+                measured turn time, not the skill. Measured 11-12/12 on seeds
+                0-2. `test_keeper_claims_and_clears_a_loose_ball...` moved its
+                ball inside the restored 0.6 m charge radius.
+Notes:        The 20 deg/s limit dominates how both skills look: a keeper
+              cannot square up to a clearance, and an attacker behind the
+              ball faces a 9 s turn. If that number is wrong, it is the one to
+              re-measure first.

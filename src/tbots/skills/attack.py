@@ -6,7 +6,9 @@ Source: ``ai_interface/attacker.py`` (``SmartAttacker``) on the
 (90 x 60 units, 0.1 s cycles), so lengths below are the original constants
 times 0.1 m, speeds in units/cycle are the same number in m/s, and the shot
 score weights are per meter instead of per unit (x10) so the scoring is
-unchanged. Constants that did not survive the move to rSim say so.
+unchanged. Kick powers convert at the robots' measured 0.0575 (m/s)/power,
+and speed, turn-rate and reception limits are the robot's, from
+``skills/hardware.py``.
 
 Without the ball the attacker chases where the ball will be, then stages
 behind it on the line to its target and closes in with the dribbler on. With
@@ -36,6 +38,12 @@ from tbots.core.state import RobotState, WorldState
 from tbots.core.units import angle_diff
 from tbots.skills.base import Skill, SkillStatus, register_skill
 from tbots.skills.go_to_point import GoToPoint
+from tbots.skills.hardware import (
+    MAX_ANGULAR_SPEED,
+    MAX_LINEAR_SPEED,
+    RECEPTION_HALF_ANGLE,
+    kick_speed,
+)
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -63,6 +71,9 @@ def choose_shot_target(
     ball: tuple[float, float],
     world: WorldState,
     geometry: FieldGeometry = DIV_B,
+    # rcss aimed 4.5 units (0.45 m) off centre; its kicks are exact. rSim's
+    # scatter, and at 0.45 shots hit the post: 11/30 empty-goal starts scored
+    # in 15 s at 0.45 against 18/30 at 0.35 (2026-11-07). Chosen 0.35.
     corner_inset: float = 0.35,
     lane_block_dist: float = 0.26,
     w_keeper_gap: float = 30.0,
@@ -127,13 +138,16 @@ class Attack(Skill):
         shoot_range: float = 3.8,
         very_close_frac: float = 0.55,
         shot_score_threshold: float = 5.5,
-        # rcss "kick 50..60" is 1.35-1.6 m/s, a pass in SSL; a shot is harder.
-        shot_speed: float = 5.0,
-        kick_align_tol: float = math.radians(2.0),
+        # kickoff_touch_power = 60, the power the shot path kicks at, at the
+        # measured 0.0575 (m/s)/power: 3.45 m/s. (The older ai-hardcoded
+        # revision of this attacker shot at power 100, 5.75 m/s.)
+        shot_speed: float = kick_speed(60.0),
+        kick_align_tol: float = math.radians(1.0),
+        # aim_align_tol: on the shot line within this before closing in.
+        aim_align_tol: float = math.radians(8.0),
         # Dribbling: short pushes, which also keeps us inside the 1 m
-        # dribbling limit. rcss "skick 22" (~0.6 m/s) dies within a few cm
-        # on rSim's carpet.
-        dribble_touch_speed: float = 1.0,
+        # dribbling limit. dribble_touch_power = 22 -> 1.27 m/s.
+        dribble_touch_speed: float = kick_speed(22.0),
         dribble_forward: float = 0.42,
         dribble_side_base: float = 0.22,
         center_pull_strength: float = 0.55,
@@ -142,15 +156,16 @@ class Attack(Skill):
         # Approach
         approach_back_extra: float = 0.12,
         stage_tol: float = 0.05,
-        contact_speed: float = 0.8,
+        # rcss closed in at dash 100, i.e. top speed.
+        contact_speed: float = MAX_LINEAR_SPEED,
         chase_far_dist: float = 0.32,
         predict_horizon: float = 0.4,
         keeper_backoff_dist: float = 0.3,
         keeper_backoff_step: float = 1.0,
-        # rcss kept "with ball" for 10 cycles (1 s) after losing contact; at
-        # 60 Hz a quarter second is enough to bridge dribbler bounces.
-        possession_ticks: int = 15,
-        max_v: float = 2.5,
+        # with_ball_counter_thresh = 10 cycles (1 s) after losing contact.
+        possession_ticks: int = 60,
+        max_v: float = MAX_LINEAR_SPEED,
+        max_w: float = MAX_ANGULAR_SPEED,
     ) -> None:
         self.geometry = geometry
         self.shoot_range = shoot_range
@@ -158,6 +173,7 @@ class Attack(Skill):
         self.shot_score_threshold = shot_score_threshold
         self.shot_speed = shot_speed
         self.kick_align_tol = kick_align_tol
+        self.aim_align_tol = aim_align_tol
         self.dribble_touch_speed = dribble_touch_speed
         self.dribble_forward = dribble_forward
         self.dribble_side_base = dribble_side_base
@@ -173,6 +189,7 @@ class Attack(Skill):
         self.keeper_backoff_step = keeper_backoff_step
         self.possession_ticks = possession_ticks
         self.max_v = max_v
+        self.max_w = max_w
 
         self._with_ball = 0
         self.last_action = "chase"
@@ -215,14 +232,14 @@ class Attack(Skill):
         if me.has_ball:
             return True
         dx, dy = world.ball.x - me.x, world.ball.y - me.y
-        in_front = abs(angle_diff(math.atan2(dy, dx), me.theta)) < math.radians(25.0)
+        in_front = abs(angle_diff(math.atan2(dy, dx), me.theta)) < RECEPTION_HALF_ANGLE
         return in_front and math.hypot(dx, dy) < ROBOT_RADIUS + BALL_RADIUS + 0.02
 
     def _goto(self, world: WorldState, me: RobotState, target: tuple[float, float],
               face: float, max_v: float | None = None, kp: float = 3.0) -> RobotCommand:
         return GoToPoint(target=self._legal(target), face=face,
                          max_v=self.max_v if max_v is None else max_v,
-                         kp_pos=kp, pos_tol=0.01).step(world, me.robot_id)
+                         max_w=self.max_w, kp_pos=kp, pos_tol=0.01).step(world, me.robot_id)
 
     def _legal(self, p: tuple[float, float]) -> tuple[float, float]:
         """Clamp a target into the field and out of both defense areas."""
@@ -271,7 +288,7 @@ class Attack(Skill):
         lateral = abs(-rel_x * uy + rel_y * ux)
         on_line = (lateral < self.stage_tol
                    and -(back + self.stage_tol) < along < -reach + 0.03
-                   and abs(angle_diff(face, me.theta)) < math.radians(10.0))
+                   and abs(angle_diff(face, me.theta)) < self.aim_align_tol)
         if not on_line:
             stage = (bx - ux * back, by - uy * back)
             return self._goto(world, me, self._around_ball(world, me, stage), face, kp=4.0)
@@ -303,8 +320,8 @@ class Attack(Skill):
         err = angle_diff(want, me.theta)
         kick = speed if abs(err) < self.kick_align_tol else 0.0
         return RobotCommand(robot_id=me.robot_id, vx=0.2,
-                            vtheta=_clamp(4.0 * err, -3.0, 3.0),
-                            dribbler=1.0, kick_speed=kick).clamped()
+                            vtheta=_clamp(4.0 * err, -self.max_w, self.max_w),
+                            dribbler=1.0, kick_speed=kick).clamped(max_w=self.max_w)
 
     # -- with the ball --------------------------------------------------------
 

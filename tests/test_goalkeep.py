@@ -130,9 +130,11 @@ def test_seeded_shots_mostly_score_unguarded(backend):
     assert goals >= 8
 
 
-def test_keeper_claims_and_clears_a_loose_ball_in_the_area(backend):
+def test_keeper_claims_and_clears_a_loose_ball_near_goal(backend):
+    """A slow ball inside the 0.6 m charge radius (the tournament default) is
+    claimed and cleared upfield."""
     outcome, left_area, world = _play(
-        backend, (GOAL_X + 0.9, 0.3, -0.6, 0.0), KEEPER_HOME, keeper_on=True, ticks=360)
+        backend, (GOAL_X + 0.6, 0.25, -0.4, 0.0), KEEPER_HOME, keeper_on=True, ticks=600)
     assert outcome != "goal"
     assert not left_area
     assert not DIV_B.inside_our_defense_area(world.ball.x, world.ball.y)
