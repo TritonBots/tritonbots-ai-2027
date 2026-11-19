@@ -1,35 +1,26 @@
-# A curriculum is an ordered list of stages. The trainer advances when the
-# promotion criterion is met, or when max_steps is exhausted.
+# DOCUMENTATION, NOT A CONFIG. Do not select it with `train=curriculum_example`.
 #
-# The observation encoder MUST produce a fixed-size vector across every
-# stage, or nothing transfers and the curriculum is decorative.
-# See Step 9.2a.
-
-observation:
-  encoder: set_encoder     # or: pad_and_mask
-  max_robots: 6            # padding width; constant across all stages
-
-stages:
-  - name: solo
-    n_us: 1
-    n_them: 0
-    max_steps: 2_000_000
-    promote_when: {metric: success_rate, above: 0.9}
-
-  - name: one_v_one
-    n_us: 1
-    n_them: 1
-    max_steps: 5_000_000
-    promote_when: {metric: success_rate, above: 0.7}
-
-  - name: two_v_two
-    n_us: 2
-    n_them: 2
-    max_steps: 10_000_000
-    promote_when: {metric: goal_diff_per_episode, above: 0.3}
-
-  - name: full
-    n_us: 6
-    n_them: 6
-    max_steps: 50_000_000
-    promote_when: null       # terminal stage
+# A curriculum is a SEQUENCE OF RUNS with a human deciding each promotion
+# (ARCHITECTURE section 9, "Curriculum: a sequence of runs"). There is no
+# automatic promotion criterion and no in-run stage change: each stage is
+# one training run with a fixed robot count, resumed from a checkpoint a
+# person chose after watching the previous stage play.
+#
+# Recommended order for a skill (the field never shrinks: every stage runs
+# on the full Division B pitch, so an easy stage teaches something true
+# about the hard one):
+#
+#   1. solo         python -m tbots.rl.train task=NAME env.n_us=1 env.n_them=0 \
+#                       train.run_dir=runs/NAME_solo
+#   2. one_v_one    python -m tbots.rl.train task=NAME env.n_us=1 env.n_them=1 \
+#                       train.resume_from=runs/NAME_solo/latest.pt \
+#                       train.run_dir=runs/NAME_1v1
+#   3. two_v_two    ... env.n_us=2 env.n_them=2 train.resume_from=runs/NAME_1v1/latest.pt
+#   4. full         ... env=div_b_6v6           train.resume_from=runs/NAME_2v2/latest.pt
+#
+# Between stages: run `python -m tbots.apps.eval --checkpoint runs/STAGE/latest.pt`,
+# read eval.json, watch a few rollouts with `python -m tbots.apps.replay`,
+# and decide.
+#
+# The observation has a fixed size across stages, or stage 2 cannot resume
+# from stage 1. Every registered builder guarantees that (tests/test_obs.py).

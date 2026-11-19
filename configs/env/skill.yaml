@@ -1,0 +1,28 @@
+# One robot learning a skill (rl/envs/skill_env.py) on the full Division B
+# field. The task (`task=NAME` at the top level) decides where everything
+# starts, when the episode ends, and what the policy sees and emits.
+kind: skill
+division: B
+n_us: 1
+n_them: 0
+control_hz: 60          # physics ticks per second; backend dt is 1/control_hz
+
+backend:
+  kind: rsim
+  field_type: 1         # verified in docs/RSIM_FACTS.md -- 0 is Division A
+
+# perception/sim.py. Ranges are [min, max], sampled once per episode.
+# mode: truth (debugging only) | noisy | tracked (anything you will export)
+perception:
+  mode: noisy
+  latency_s: [0.020, 0.045]
+  robot_pos_std_m: [0.0, 0.005]
+  robot_angle_std_rad: [0.0, 0.02]
+  ball_pos_std_m: [0.0, 0.005]
+  dropout: [0.0, 0.04]
+  actuation_delay_s: 0.0
+
+out_of_bounds: terminate
+
+# Overrides of the task's codec kwargs, e.g. `+env.codec.action_repeat=2`.
+codec: {}

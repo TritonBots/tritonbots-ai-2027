@@ -70,6 +70,7 @@ it, because that is where real runs happen.
 | TASK-078 | `rl/codec.py`: registered `skill_v1` codec. `{"move": Box(3), "flags": MultiBinary(2)}`; norm-limited speed; kick/dribble booleans map to kwarg speeds; kick clamped to 6.5 m/s; per-tick rate limit from `core/limits.py`; `action_repeat`; `spec()` for checkpoints. | `tests/test_codec.py` |
 | TASK-053 | `rl/obs/builders.py`: `ego_v1` (33 floats, egocentric: ball, goals, nearest two teammates and opponents ordered by distance) and `global_v1` (113 floats, fixed six slots a side ordered by position). Fixed scaling constants, no ID values, golden vectors pinned. Set encoder stays TASK-083. | `tests/test_obs.py` |
 | TASK-050 | `rl/envs/skill_env.py`: `SkillEnv` over a `SkillTask` — spaces from codec and builder, `SKILL_SUCCESS`/`SKILL_FAILURE` from the task predicates, out-of-bounds terminates. Ships with the `SkillTask` registry (`rl/tasks/`) and the reference `go_to_ball` task. | `tests/test_skill_env.py` |
+| TASK-006 | `rl/factory.py`: `make_env(cfg)` builds backend → `Perception` → `SkillEnv`; `compose_config()` gives tests the CLI's config; `resolve_config()` makes the task's default reward explicit for the run record. New `configs/env/skill.yaml` (default); `div_b_6v6` is a 6v6 skill env until TASK-051; `perception:` replaces `domain_randomization`. Network config stays Tier 2. | `tests/test_factory.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -104,7 +105,6 @@ Three of the four are done — see §2. What is left:
 | ID | Task | Size | Done when |
 |---|---|---|---|
 | **TASK-079** | **`SkillTask` registry and scaffold.** A registered dataclass grouping scenario sampler, success and failure predicates, obs builder, codec, time limit, default reward YAML. `python -m tbots.rl.new_task <name>` writes the file with every hook documented, a reward YAML, and a test. Must be simple enough for a recruit's first afternoon. | M | `new_task demo` followed by `pytest tests/test_task_demo.py` passes on a clean checkout; `train env=skill task=demo train.total_steps=1000` runs. |
-| **TASK-006** | **`make_env(cfg)`** in `rl/factory.py`: backend → `PerceptionSim` → tracker → env → wrappers. The only construction path for train, eval, tests and benchmarks. The network-config half of this task stays Tier 2. | S | `make_env` builds every combination in `configs/`; `rl/train.py`, `apps/eval.py` and `rl/vec.py` call nothing else. |
 
 ### 3.5 Learning
 

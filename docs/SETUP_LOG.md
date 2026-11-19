@@ -2377,3 +2377,38 @@ Deviations:   - TASK-050 needs a `SkillTask` to be thin over, so the
               - `configs/reward/go_to_ball.yaml` is the task's default reward.
 Notes:        Only the ego robot is commanded. Teammates and opponents stand
               still where the scenario put them.
+
+## TASK-006 — `make_env(cfg)`            [PASS]
+Verification: `pytest -q tests/test_factory.py` -> 26 passed: every
+              env x task x reward x perception-mode combination in
+              configs/ (2 x 1 x 3 x 3 = 18) builds, resets and steps; the
+              task's default reward is used and recorded unless `reward=` is
+              given; `+env.codec.action_repeat=3` reaches the codec; an old
+              `vision_latency_ms` key and `kind: tactics` both raise. An AST
+              scan asserts train.py and vec.py (and eval.py / evaluate.py once
+              they exist) name none of RSimBackend, SkillEnv, SSLEnv,
+              Perception, Tracker, CompositeReward, build_codec.
+              `make lint`, `make test` clean.
+Deviations:   - `configs/config.yaml` defaults to `env: skill` and
+                `task: go_to_ball`, with `reward: null`: the task names its
+                default reward and `reward=NAME` overrides it (verified that
+                Hydra 1.3 leaves the key absent rather than erroring).
+                `resolve_config()` fills it in, and the trainer writes the
+                resolved config, so a run records the terms it trained on.
+              - `configs/env/div_b_6v6.yaml` is `kind: skill` with 6v6 bodies
+                until the tactics env exists (TASK-051); otherwise "builds
+                every combination" could not hold. Its
+                `max_episode_seconds: 120` is gone: a skill task owns its
+                time limit.
+              - The three stale config keys TASKS.md section 7 names are
+                resolved: `domain_randomization` -> `perception` (both env
+                files); `encoder: set_encoder` and `promote_when` removed --
+                `curriculum_example.yaml` is now comment-only documentation
+                of the sequence-of-runs procedure. It still lives in the
+                `train` group, so selecting it gives an empty train config;
+                the header says not to.
+              - No wrappers yet; the slot in `make_env` is marked.
+              - `compose_config(overrides)` is the Hydra compose API over
+                configs/, so tests and benchmarks see exactly the CLI's config.
+Notes:        `curriculum_example.yaml` documents `train.resume_from`, which
+              TASK-056 must implement.

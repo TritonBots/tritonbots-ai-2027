@@ -1,8 +1,14 @@
 defaults:
-  - env: div_b_6v6
-  - reward: example
+  - env: skill
+  # No default reward file: the task names its own (SkillTask.reward), and
+  # `reward=NAME` on the command line overrides it. Either way the run
+  # directory's config.yaml records the terms actually used.
+  - reward: null
   - train: default
   - _self_
+
+# The skill task to train: a module in src/tbots/rl/tasks/.
+task: go_to_ball
 
 # Keep Hydra from changing into an implementation-specific output directory.
 # Training artifacts are owned explicitly by train.run_dir.
