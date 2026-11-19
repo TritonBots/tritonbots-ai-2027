@@ -2577,3 +2577,25 @@ Notes:        FINDING (go_to_ball, not the pipeline): several deterministic
               the reward or the radius.
               The "trained with perception 'noisy', running with 'tracked'"
               warning on every eval is TASK-059's rule, by design.
+
+## TASK-082 — `apps/replay.py`            [PASS, browser not checked by eye]
+Verification: `python -m tbots.apps.replay runs/gtb/rollouts/eval_seed1000001.npz`
+              (a recorded TASK-058 episode) with a multicast receiver on
+              224.5.23.2:10006 -> all 124 detection frames received, first to
+              last in 2.051 s for a 2.05 s episode; exit 0.
+              `pytest -q tests/test_replay.py` -> 5 passed: frames follow the
+              clock at x1 and x2; pause holds; seek +-1 s clamps at both ends;
+              frame-step pauses; resume continues from the stepped frame; a
+              rollout round-trips through its file; and `play()` over a real
+              socket delivers every frame in 0.95-1.6 s for 1 s of play with
+              the robot's motion visible in the decoded millimetres.
+              `make lint`, `make test` clean.
+Deviations:   - The gate says "plays back in the browser". I verified the
+                packets ssl-vision-client consumes (same publisher, group and
+                port as viz_rsim, which is verified in the browser since Step
+                16), at real time. Nobody looked at http://localhost:8083
+                during this run; do that once.
+              - Keys are read from the terminal in cbreak mode; with no
+                terminal (piped, CI) it plays to the end and exits.
+              - Refuses a port that already has a vision publisher, like
+                viz_rsim.
