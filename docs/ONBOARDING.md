@@ -547,12 +547,12 @@ Now you write code. This is the exercise every new recruit does, and it takes ab
 
 Open `src/tbots/rl/rewards/registry.py`. It is short. The whole system is:
 
-- A **reward term** is a class with `__call__(world, prev) -> float` and `reset()`.
+- A **reward term** is a class with `__call__(tr) -> float` and `reset()`. `tr` is a `Transition` (`src/tbots/core/transition.py`): ground truth before and after the step (`tr.prev`, `tr.world`), the commands we sent, the trained robot's id (`tr.ego_id`), the field geometry, `tr.dt`, and `tr.done` — `None` while the episode runs, else why it ended.
 - You register it with the `@register_reward("name")` decorator.
 - A **reward function** is a weighted sum of registered terms, defined in a YAML file.
 - Nobody edits an environment to change a reward. Ever.
 
-Also open `src/tbots/core/state.py` — that is the `WorldState` you will be reading from. It is thirty lines and you should know all of it.
+Also open `src/tbots/core/state.py` — that is the `WorldState` in `tr.world` and `tr.prev`. It is short and you should know all of it.
 
 #### Step 2 — write a term
 
@@ -563,7 +563,7 @@ Create `src/tbots/rl/rewards/mine.py`:
 
 import math
 
-from tbots.core.state import WorldState
+from tbots.core.transition import Transition
 from tbots.rl.rewards.registry import register_reward
 
 
@@ -577,21 +577,17 @@ class ApproachBall:
     the rate of approach teaches it to actually go.
     """
 
-    def __init__(self, robot_id: int = 0) -> None:
-        self.robot_id = robot_id
-
     def reset(self) -> None:
         pass
 
-    def __call__(self, world: WorldState, prev: WorldState) -> float:
-        me = world.us.get(self.robot_id)
-        was = prev.us.get(self.robot_id)
+    def __call__(self, tr: Transition) -> float:
+        me = tr.world.us.get(tr.ego_id)
+        was = tr.prev.us.get(tr.ego_id)
         if me is None or was is None:
             return 0.0
-        d_now = math.hypot(me.x - world.ball.x, me.y - world.ball.y)
-        d_was = math.hypot(was.x - prev.ball.x, was.y - prev.ball.y)
-        dt = max(world.t - prev.t, 1e-6)
-        return (d_was - d_now) / dt
+        d_now = math.hypot(me.x - tr.world.ball.x, me.y - tr.world.ball.y)
+        d_was = math.hypot(was.x - tr.prev.ball.x, was.y - tr.prev.ball.y)
+        return (d_was - d_now) / tr.dt
 ```
 
 Register it for import in `src/tbots/rl/rewards/__init__.py`:
@@ -606,7 +602,7 @@ Create `configs/reward/approach.yaml`:
 
 ```yaml
 terms:
-  - {name: approach_ball, weight: 1.0, robot_id: 0}
+  - {name: approach_ball, weight: 1.0}
 ```
 
 #### Step 4 — train

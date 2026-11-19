@@ -93,3 +93,31 @@ def test_perception_dataclasses_round_trip_and_are_frozen():
     assert world.telemetry == {4: feedback}
     with pytest.raises(FrozenInstanceError):
         frame.camera_id = 4  # type: ignore[misc]
+
+
+# -- TASK-076: Transition and Done ------------------------------------------
+
+def test_transition_is_frozen_and_carries_everything_a_reward_term_needs():
+    from tbots.core.transition import Done, Transition
+
+    w = WorldState(t=0.1, ball=BallState(0.0, 0.0))
+    p = WorldState(t=0.0, ball=BallState(0.0, 0.0))
+    tr = Transition(world=w, prev=p, commands=(RobotCommand(0, vx=1.0),),
+                    ego_id=0, geometry=DIV_B, dt=1 / 60, done=Done.GOAL_US)
+    assert tr.commands[0].vx == 1.0 and tr.done is Done.GOAL_US
+    with pytest.raises(FrozenInstanceError):
+        tr.done = None  # type: ignore[misc]
+    # A list would be mutable inside a frozen dataclass; it is a tuple.
+    tr2 = Transition(world=w, prev=p, commands=[RobotCommand(0)],  # type: ignore[arg-type]
+                     ego_id=None, geometry=DIV_B, dt=1 / 60)
+    assert isinstance(tr2.commands, tuple) and tr2.done is None
+
+
+def test_done_names_every_reason_and_only_timeout_is_a_truncation():
+    from tbots.core.transition import Done
+
+    names = {d.name for d in Done}
+    assert {"GOAL_US", "GOAL_THEM", "OUT_OF_BOUNDS", "TIMEOUT",
+            "SKILL_SUCCESS", "SKILL_FAILURE"} <= names
+    assert any(n.startswith("FOUL_") for n in names)
+    assert [d for d in Done if not d.terminal] == [Done.TIMEOUT]

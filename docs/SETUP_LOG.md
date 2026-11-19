@@ -2262,3 +2262,37 @@ Notes:        FINDING: command latency (10-20 ms in the old
               It is not perception, and no task owns it. `actuation_delay_s`
               only sets how far the tracker predicts. Recorded for whoever
               owns sim-to-real; the old wrapper's queue is reusable.
+
+## TASK-076 — two-world `SSLEnv` and `Transition`            [PASS]
+Verification: `pytest -q tests/test_core.py tests/test_rewards.py` -> 13
+              passed. The gate term reads `tr.commands` and `tr.done` for a
+              whole real-rSim episode: the robot pushes the ball 1.5 m into
+              their goal, the last transition carries `Done.GOAL_US`, every
+              earlier one `None`, and every one the exact command sent. A
+              noisy-perception run shows observation k equals truth k - 3
+              while the reward term saw truth k. `make lint` clean (mypy now
+              checks the bodies of `reset`/`step`, which were unannotated
+              and so skipped); `make test` all pass.
+Deviations:   - `Transition` and `Done` live in `core/transition.py`
+                (ARCHITECTURE section 6 lists `Transition` as a core type;
+                it imports only core).
+              - `Done` has a `terminal` property; `TIMEOUT` is the only
+                truncation. FOUL_* members are FOUL_DRIBBLING,
+                FOUL_DOUBLE_TOUCH, FOUL_NO_PROGRESS -- the three the
+                synthetic referee will model (ARCHITECTURE section 9).
+              - `SSLEnv.__init__` is keyword-only after `scenario_fn` and
+                takes `max_episode_ticks` (physics ticks), not
+                `max_episode_steps`: with `action_repeat` (TASK-078) one env
+                step is several ticks, and a time limit in env steps would
+                change with it.
+              - `_decode(action, world)` returns one command list per tick.
+              - A goal or out-of-bounds needs the WHOLE ball over the line
+                (centre past the line by `BALL_RADIUS`), per SSL rules.
+              - `out_of_bounds="restart"` raises NotImplementedError naming
+                TASK-051/052 rather than being accepted and ignored.
+              - ONBOARDING section 1.7 taught the old `(world, prev)`
+                signature; its example term and YAML are updated, since a
+                recruit following it would otherwise hit a TypeError.
+Notes:        Perception's RNG is drawn from the env's `np_random` at every
+              reset, so one seed fixes both, and switching perception mode
+              does not change which scenarios are drawn.
