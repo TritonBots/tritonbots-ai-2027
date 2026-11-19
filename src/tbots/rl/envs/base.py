@@ -83,6 +83,9 @@ class SSLEnv(gym.Env):
         self._truth: WorldState | None = None
         self._perceived: WorldState | None = None
         self._publisher: Any = None  # set up lazily for render_mode == "vision"
+        # Called after every physics tick with (transition, per-term reward).
+        # Evaluation records rollouts through it; it must not touch the env.
+        self.tick_hook: Callable[[Transition, dict[str, float]], None] | None = None
 
     # -- subclass hooks -----------------------------------------------------
 
@@ -159,6 +162,8 @@ class SSLEnv(gym.Env):
             total += self.reward(tr)
             for name, v in self.reward.last.items():
                 terms[name] = terms.get(name, 0.0) + v
+            if self.tick_hook is not None:
+                self.tick_hook(tr, dict(self.reward.last))
             if self.render_mode is not None:
                 self.render()
             if done is not None:

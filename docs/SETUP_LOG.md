@@ -2470,3 +2470,49 @@ Deviations:   - "Refuse on codec mismatch" is read as: the codec name and
                 changes CI to do so) rather than skip.
 Notes:        `git_sha()` runs `git rev-parse HEAD` beside the package and
               records None outside a git checkout.
+
+## TASK-056 — the trainer            [PASS]
+Verification: `python -m tbots.rl.train env=skill task=go_to_ball
+              train.run_dir=...` (defaults: 200k steps, 8 workers, noisy
+              perception, seed 1) -> 200,704 steps in 328 s. Training mean
+              episode return (last 100): -1.03 at 4k steps, +0.30 at 16k,
+              +3.12 at 82k, +3.39 at 200k; 397 of 599 episodes ended in
+              SKILL_SUCCESS, the rest TIMEOUT. THE DOCUMENTED BUDGET: positive
+              by 20k steps, plateau (~+3.5) by ~100k; the 200k default is ample.
+              Run directory held latest.pt, config.yaml,
+              events.out.tfevents.*, rollouts/ (10 newest of 12), and
+              train_summary.json.
+              `pytest -q tests/test_ppo.py tests/test_train.py` -> 7 passed:
+              truncation adds gamma*V(final_obs) and termination does not; GAE
+              hand-computed across an episode boundary; composite log-prob is
+              the sum of parts; a short real run writes the whole run
+              directory and bootstraps every truncation; resume into the same
+              run continues the step count, into a new run restarts it, and
+              a dt change is refused. `make lint`, `make test` clean.
+Deviations:   - The per-checkpoint eval (deterministic policy, `tracked`
+                perception, 3 fixed seeds) was positive at every checkpoint but
+                does not track the training curve: +2.23, +2.56, +1.28, +1.50
+                at 51k/100k/152k/201k, with 1 success of 3 at the end. Three
+                episodes is a small sample, and training ran in `noisy` while
+                eval runs `tracked`. Not investigated further; worth a look by
+                whoever tunes go_to_ball (train in `tracked`, more eval seeds).
+              - The per-checkpoint eval needs the evaluation routine and
+                rollout files, so `rl/evaluate.py` and `rl/rollout.py` land
+                here; TASK-058 adds the `apps/eval.py` CLI and eval.json on
+                top of them. `SSLEnv.tick_hook` (per-tick Transition and
+                per-term reward) is how a rollout is recorded.
+              - Collection is a `Collector` class so TASK-080's determinism
+                test exercises the trainer's own code path.
+              - Resume: weights and optimizer always; the step count continues
+                only when resuming this run's own latest.pt (walltime), and
+                restarts for another run's (the next curriculum stage).
+              - CI installed only `.[dev]`, so every torch test would have
+                failed there. ci.yml and SETUP.md 15.4 now install torch from
+                the CPU-only index (`https://download.pytorch.org/whl/cpu`,
+                checked to resolve: torch 2.15.0+cpu) and then `.[dev,train]`.
+                NOT verified on GitHub Actions: nothing was pushed.
+              - Default `train.num_envs` is now 8 (was 1); hyperparameters are
+                CleanRL's continuous-control defaults, in
+                configs/train/default.yaml.
+Notes:        A CPU-throttled host (see TASK-055) ran this at 600-900
+              steps/s with 8 workers on the 1v0 env.

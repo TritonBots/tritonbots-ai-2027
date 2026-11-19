@@ -22,7 +22,9 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from tbots.backends.rsim import RSimBackend
 from tbots.core.geometry import DIV_B
 from tbots.perception.sim import Perception, PerceptionConfig
+from tbots.rl.artifacts import checkpoint_metadata
 from tbots.rl.envs.skill_env import SkillEnv
+from tbots.rl.obs.builders import obs_size
 from tbots.rl.rewards.registry import CompositeReward
 from tbots.rl.tasks import get_task
 
@@ -85,3 +87,14 @@ def make_env(cfg: DictConfig, *, render_mode: str | None = None) -> gym.Env:
     # Wrappers go here, in this order, for every caller. There are none yet:
     # the trainer keeps its own episode statistics.
     return env
+
+
+def env_metadata(env: gym.Env, cfg: DictConfig) -> dict[str, Any]:
+    """The checkpoint metadata (TASK-059) describing `env` as `make_env`
+    built it from `cfg`: what a policy for it observes and emits."""
+    u = env.unwrapped
+    assert isinstance(u, SkillEnv)
+    return checkpoint_metadata(
+        obs_builder=u.task.obs_builder, obs_size=obs_size(u.task.obs_builder),
+        codec=u.codec.spec(), dt=u.backend.dt, perception_mode=u.perception.mode,
+        stage=cfg.train.get("stage") if "train" in cfg else None, task=str(cfg.task))
