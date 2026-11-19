@@ -2533,3 +2533,14 @@ Deviations:   - Opponents are not seeded because none act yet (everyone but
 Notes:        The mechanism landed with TASK-076 (perception RNG drawn from
               the env RNG), TASK-055 (worker i reset with seed + i) and
               TASK-056 (seeded generators). This task adds the test.
+
+## TASK-081 — robot-ID relabel invariance            [PASS]
+Verification: `pytest -q tests/test_obs.py` -> 15 passed. For every
+              registered builder (`ego_v1`, `global_v1`) and two relabellings
+              (match-day ids {7,1,12,4}/{9,3}, and a shuffle): the builder's
+              output is bit-identical, and so are a PPO `Agent`'s mean move,
+              flag logits mode and value on it. `make lint`, `make test` clean.
+Deviations:   The builder half landed with TASK-053; this adds the policy
+              half. A new builder cannot skip it: `test_obs.py` fails if a
+              registered builder has no golden vector, and the relabel tests
+              run over that same set.

@@ -131,3 +131,26 @@ def test_unknown_builder_and_missing_ego_are_actionable_errors():
         build_obs("ego_v1", WORLD, 5)
     with pytest.raises(ValueError, match="needs a robot_id"):
         build_obs("ego_v1", WORLD, None)
+
+
+@pytest.mark.parametrize("name", sorted(GOLDEN))
+@pytest.mark.parametrize(("us_map", "them_map"), RELABELS)
+def test_relabelling_robot_ids_changes_no_policy_output(name, us_map, them_map):
+    """TASK-081, policy half: the PPO actor-critic sees the same thing, so it
+    does the same thing -- mean action, flag logits, and value."""
+    import torch
+
+    from tbots.rl.algo.ppo import Agent
+    from tbots.rl.codec import build_codec
+
+    torch.manual_seed(0)
+    agent = Agent(obs_size(name), build_codec("skill_v1").action_space)
+    ego = _ego(name)
+    a = torch.as_tensor(build_obs(name, WORLD, ego))[None]
+    b = torch.as_tensor(build_obs(name, _relabel(WORLD, us_map, them_map),
+                                  None if ego is None else us_map[ego]))[None]
+    with torch.no_grad():
+        da, db = agent.dist(a), agent.dist(b)
+        for k in da.parts:
+            torch.testing.assert_close(da.parts[k].mode(), db.parts[k].mode(), rtol=0, atol=0)
+        torch.testing.assert_close(agent.value(a), agent.value(b), rtol=0, atol=0)
