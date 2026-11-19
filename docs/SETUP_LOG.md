@@ -2218,3 +2218,15 @@ Deviations:   Not a TASKS.md task; requested directly. `--watch` (real-time
 Notes:        Usage: `python -m tbots.apps.duel [--n 20] [--seconds 20]
               [--seed 1] [--watch]`. `run_duels()` returns the tally for
               scripting.
+
+## TASK-007 — skill registry wiring            [PASS]
+Verification: `pytest -q tests/test_skills.py` -> 2 passed;
+              `skill_names()` -> ['attack', 'go_to_point', 'goalkeep'];
+              `build_skill("go_to_point", target=(1, 0))` -> GoToPoint.
+Deviations:   None in the code. The work landed in 5d1eb4e ("Completed
+              tasks 007, 041, 077") but was never moved to TASKS.md §2 or
+              given a block here, so the board still listed it as open.
+              This block and the §2 row are the whole change.
+Notes:        5d1eb4e also claims TASK-041 and TASK-077. Neither is closed
+              here: both are Tier 2, and neither has been checked against
+              its Done-when line. They stay open on the board.

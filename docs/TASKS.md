@@ -63,6 +63,7 @@ it, because that is where real runs happen.
 | TASK-010 | `net/vision.py`: decode to meters, drop duplicates, one tick per camera cycle, vision-PC clock mapped onto ours, wire geometry exposed. | `tests/test_vision.py`, `tests/test_network.py` |
 | TASK-011 | `net/robot_control.py`: one `RobotControl` per tick, port picked per packet from the current colour, refuses to guess an unresolved one, dribbler-contact feedback. | `tests/test_robot_control.py`, `tests/test_network.py` |
 | TASK-012 | `apps/wiggle.py` drives a circle through ER-Force and fits it from vision: radius 0.51 m against 0.50 m commanded, both colours. | `python -m tbots.apps.wiggle` |
+| TASK-007 | `skills/__init__.py` imports the built-in skills, so `skill_names()` is `['attack', 'go_to_point', 'goalkeep']` and `build_skill` round-trips. | `tests/test_skills.py` |
 | TASK-014 | `NetworkBackend.observe()`: vision through the tracker, `GameState` and telemetry attached, Division checked on the wire. The parity test runs: GoToPoint reaches 36 mm against ER-Force (blue) and 35 mm (yellow, defending +x). | `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py tests/test_backend_parity.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
@@ -104,7 +105,6 @@ Three of the four are done — see §2. What is left:
 | **TASK-079** | **`SkillTask` registry and scaffold.** A registered dataclass grouping scenario sampler, success and failure predicates, obs builder, codec, time limit, default reward YAML. `python -m tbots.rl.new_task <name>` writes the file with every hook documented, a reward YAML, and a test. Must be simple enough for a recruit's first afternoon. | M | `new_task demo` followed by `pytest tests/test_task_demo.py` passes on a clean checkout; `train env=skill task=demo train.total_steps=1000` runs. |
 | **TASK-050** | **`rl/envs/skill_env.py`**, now a thin env over a `SkillTask`: spaces from the codec and builder, `done` from the task predicates, out-of-bounds defaults to terminate. | S | One episode of `go_to_ball` runs in `truth`, `noisy` and `tracked` modes. |
 | **TASK-006** | **`make_env(cfg)`** in `rl/factory.py`: backend → `PerceptionSim` → tracker → env → wrappers. The only construction path for train, eval, tests and benchmarks. The network-config half of this task stays Tier 2. | S | `make_env` builds every combination in `configs/`; `rl/train.py`, `apps/eval.py` and `rl/vec.py` call nothing else. |
-| **TASK-007** | **Skill registry wiring.** `skills/__init__.py` imports nothing, so `skill_names()` is `[]` and `build_skill("go_to_point")` raises. | S | Test: registry non-empty and round-trips. |
 
 ### 3.5 Learning
 
