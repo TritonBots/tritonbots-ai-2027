@@ -2599,3 +2599,30 @@ Deviations:   - The gate says "plays back in the browser". I verified the
                 terminal (piped, CI) it plays to the end and exits.
               - Refuses a port that already has a vision publisher, like
                 viz_rsim.
+
+## TASK-079 — `SkillTask` registry and scaffold            [PASS]
+Verification: On a fresh `git worktree` of this branch (submodules inited,
+              `make proto`, PYTHONPATH pointed at the worktree and confirmed
+              by `tbots.__file__`):
+              `python -m tbots.rl.new_task demo` -> wrote
+              src/tbots/rl/tasks/demo.py, configs/reward/demo.yaml,
+              tests/test_task_demo.py; `git status` showed exactly those three.
+              `pytest tests/test_task_demo.py` -> 3 passed (registers,
+              scenario places 1v0 / 3v2 / 6v6, one tracked episode runs).
+              `python -m tbots.rl.train env=skill task=demo
+              train.total_steps=1000` -> latest.pt, config.yaml, TensorBoard
+              events, 3 eval rollouts. Worktree removed afterwards.
+              `pytest -q tests/test_new_task.py` -> 8 passed (files parse,
+              reward terms exist, refuses bad/taken/reserved names, never
+              overwrites). `make lint`, `make test` clean.
+Deviations:   - The registry half (`SkillTask`, `register_task`, auto-import
+                of every module in rl/tasks/) landed with TASK-050, which
+                needed it. This adds the scaffold.
+              - The scaffolded task is a working copy of go_to_ball (0.3 m
+                radius), so the recruit's first test run is green and every
+                change after it is one they made.
+              - `train.total_steps=1000` actually runs 2048 steps: the trainer
+                does whole PPO updates of num_envs x num_steps (8 x 256). The
+                gate's "runs" holds; the number is a floor, not exact.
+              - The scaffold refuses an upper-case, keyword, reserved or
+                already-registered name, and refuses to overwrite any file.

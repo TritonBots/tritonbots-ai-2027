@@ -77,6 +77,7 @@ it, because that is where real runs happen.
 | TASK-081 | Relabelling `us`/`them` IDs (match-day `{7,1,12,4}` and a shuffle) leaves every registered builder's output, and a PPO agent's action distribution and value, bit-identical. | `tests/test_obs.py` |
 | TASK-058 | `apps/eval.py`: deterministic policy on a fixed seed set (from 1,000,000) in `tracked` perception, rebuilt from the run's own config through `make_env`; writes `eval.json` (per-episode return, done reason, goal difference, per-term totals and distributions) and `rollouts/*.npz` (newest ten). `--render vision --realtime` streams live. 6v6 two-minute rollout: 1.43 MB. | `tests/test_eval.py`, SETUP_LOG TASK-058 |
 | TASK-082 | `apps/replay.py`: streams a rollout through `VisionPublisher` at real time; space pauses, arrows seek 1 s, `,`/`.` step frames, `-`/`+` speed, `0` restarts; geometry re-sent every 5 s. A recorded go_to_ball episode: 124/124 frames on the wire in 2.051 s for 2.05 s of play. Browser view not checked by eye. | `tests/test_replay.py`, SETUP_LOG TASK-082 |
+| TASK-079 | `SkillTask` registry (`rl/tasks/`, landed with TASK-050) plus `python -m tbots.rl.new_task NAME`, which writes a working task file with every hook documented, a reward YAML and a test, and edits nothing else. Verified on a fresh worktree: `new_task demo`, its test, and `train env=skill task=demo train.total_steps=1000`. | `tests/test_new_task.py`, SETUP_LOG TASK-079 |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -110,7 +111,6 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-079** | **`SkillTask` registry and scaffold.** A registered dataclass grouping scenario sampler, success and failure predicates, obs builder, codec, time limit, default reward YAML. `python -m tbots.rl.new_task <name>` writes the file with every hook documented, a reward YAML, and a test. Must be simple enough for a recruit's first afternoon. | M | `new_task demo` followed by `pytest tests/test_task_demo.py` passes on a clean checkout; `train env=skill task=demo train.total_steps=1000` runs. |
 
 ### 3.5 Learning
 
