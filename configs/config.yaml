@@ -5,6 +5,9 @@ defaults:
   # directory's config.yaml records the terms actually used.
   - reward: null
   - train: default
+  # Log to the terminal only. The default writes <job>.log into hydra.run.dir,
+  # which is `.` below, so every run left a train.log in the repo root.
+  - override hydra/job_logging: stdout
   - _self_
 
 # The skill task to train: a module in src/tbots/rl/tasks/.
