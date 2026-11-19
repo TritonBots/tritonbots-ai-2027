@@ -71,6 +71,7 @@ it, because that is where real runs happen.
 | TASK-050 | `rl/envs/skill_env.py`: `SkillEnv` over a `SkillTask` — spaces from codec and builder, `SKILL_SUCCESS`/`SKILL_FAILURE` from the task predicates, out-of-bounds terminates. Ships with the `SkillTask` registry (`rl/tasks/`) and the reference `go_to_ball` task. | `tests/test_skill_env.py` |
 | TASK-006 | `rl/factory.py`: `make_env(cfg)` builds backend → `Perception` → `SkillEnv`; `compose_config()` gives tests the CLI's config; `resolve_config()` makes the task's default reward explicit for the run record. New `configs/env/skill.yaml` (default); `div_b_6v6` is a 6v6 skill env until TASK-051; `perception:` replaces `domain_randomization`. Network config stays Tier 2. | `tests/test_factory.py` |
 | TASK-055 | `rl/vec.py`: `make_vec_env(cfg, n)` spawns one `make_env` per subprocess with `OMP_NUM_THREADS=1` and SAME_STEP autoreset; `python -m tbots.rl.vec` benchmarks. 6v6 on the (throttled) dev box: 139 / 674 / 837 steps/s for 1 / 8 / 32 workers in `truth`, 102 / 526 / 589 in `tracked`. | README, `tests/test_vec.py` |
+| TASK-059 | `rl/artifacts.py`: `checkpoint_metadata()` records builder name and size, codec spec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, task, git SHA. `check_compatible()` refuses builder/codec/`dt` mismatches (codec = name, speed scales, accel limits, `action_repeat`), warns on perception mode, never checks SHA, stage, task or kick/dribbler speeds. | `tests/test_rl_artifacts.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -111,7 +112,6 @@ Three of the four are done — see §2. What is left:
 | ID | Task | Size | Done when |
 |---|---|---|---|
 | **TASK-056** | **The trainer.** Vendored CleanRL-style PPO in `rl/algo/ppo.py` around a composable action distribution (Box, Bernoulli, and per-robot factorised heads for MAPPO later). Truncation bootstraps, termination does not. `rl/train.py` wires `make_env`, the step loop, TensorBoard, `artifacts.save_checkpoint`, and a short eval at each checkpoint interval. | L | `train env=skill task=go_to_ball` reaches a positive mean episode return within a documented step budget; `runs/NAME/{latest.pt, config.yaml, events.out.tfevents.*, rollouts/}` exist; a truncated-episode test checks the bootstrap. |
-| **TASK-059** | **Checkpoint metadata**, extended: builder name and size, codec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, git SHA. Refuse on builder/codec/`dt` mismatch, warn on perception mode, never check the SHA. | S | Tests for each refusal and the warning. |
 | **TASK-080** | **Seeding and determinism.** One seed through scenarios, perception noise, opponents, policy sampling. | S | Two runs with the same seed produce identical first 100 transitions per worker. |
 | **TASK-081** | **Robot-ID relabel invariance.** Relabel `us` and `them` IDs, assert every builder's output and a policy's output are unchanged. | S | The test exists and passes for every registered builder. |
 

@@ -2446,3 +2446,27 @@ Deviations:   - The machine was throttled during the measurement, and the
                 TASK-070) is removed, and ARCHITECTURE section 9 now points to
                 the README instead of quoting it.
 Notes:        Not measured: Atlantis (TASK-064 runs this benchmark there).
+
+## TASK-059 — checkpoint metadata            [PASS]
+Verification: `pytest -q tests/test_rl_artifacts.py` -> 13 passed: one
+              refusal test each for builder name, builder size, codec name,
+              codec speed scale, dt, action_repeat, acceleration limits; a
+              perception-mode mismatch warns and still loads; a different
+              SHA, stage, task and kick speed load silently (warnings set to
+              errors); a checkpoint with no metadata refuses when metadata is
+              expected. `make lint`, `make test` clean.
+Deviations:   - "Refuse on codec mismatch" is read as: the codec name and
+                every parameter that changes what an output MEANS (speed
+                scales, acceleration limits, action_repeat). Kick and
+                dribbler speed are recorded but not checked: ARCHITECTURE
+                section 9 makes them skill kwargs that differ by use (a pass
+                and a shot kick at different powers from one policy).
+              - Also records `task` (not in the list; useful, never checked).
+              - `load_checkpoint(expected_metadata=...)` previously compared
+                whole dicts for equality, and its test used a made-up
+                `observation` key. That test is rewritten against the real
+                contract. Its `pytest.importorskip("torch")` is gone: torch is
+                required for checkpoints, and CI must install it (TASK-056
+                changes CI to do so) rather than skip.
+Notes:        `git_sha()` runs `git rev-parse HEAD` beside the package and
+              records None outside a git checkout.
