@@ -2349,3 +2349,31 @@ Deviations:   - `register_obs(name, size, egocentric=...)`: the size is
                 TASK-056.
 Notes:        Neighbours are ordered by distance, ties by relative position;
               global slots by (x, y). Neither ever reads an ID.
+
+## TASK-050 — `SkillEnv`            [PASS]
+Verification: `pytest -q tests/test_skill_env.py` -> 7 passed: one episode
+              of go_to_ball (a drive-at-the-ball policy on the observation)
+              ends in SKILL_SUCCESS in `truth`, `noisy` and `tracked`;
+              random actions run 3v3 to the end in tracked mode; the env
+              passes `gymnasium.utils.env_checker.check_env` (including its
+              same-seed determinism checks). `make lint`, `make test` clean.
+Deviations:   - TASK-050 needs a `SkillTask` to be thin over, so the
+                registry half of TASK-079 lands here: `rl/tasks/registry.py`
+                (`SkillTask`, `register_task`, `get_task`, `task_names`),
+                `rl/tasks/sampling.py` (scenario helpers), and
+                `rl/tasks/go_to_ball.py`, the reference task. Every module in
+                `rl/tasks/` is imported with the package, so a new task file
+                needs no registration edit. The scaffold and TASK-079's gate
+                close after the trainer exists.
+              - A scenario sampler is `scenario(rng, n_us, n_them)`: the env
+                config owns the robot count (a curriculum is a sequence of
+                runs, ARCHITECTURE section 9), the task owns where they go.
+              - Added general skill reward terms in `rl/rewards/skill.py`:
+                `ball_progress` (meters closed on the ball), `outcome`
+                (one-off payment by `Done` reason), `time_cost` (-1/s). Not
+                named `approach_ball`, which is the term ONBOARDING section
+                1.7 has recruits write themselves -- a built-in of that name
+                would make their registration raise.
+              - `configs/reward/go_to_ball.yaml` is the task's default reward.
+Notes:        Only the ego robot is commanded. Teammates and opponents stand
+              still where the scenario put them.

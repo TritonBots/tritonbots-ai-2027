@@ -1,0 +1,6 @@
+# The go_to_ball task's default reward. Progress toward the ball in meters,
+# a bonus for arriving, and a cost per second so arriving sooner is better.
+terms:
+  - {name: ball_progress, weight: 1.0}
+  - {name: outcome, weight: 1.0, success: 1.0}
+  - {name: time_cost, weight: 0.1}
