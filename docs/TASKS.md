@@ -75,6 +75,7 @@ it, because that is where real runs happen.
 | TASK-056 | `rl/algo/{distributions,ppo}.py`: CleanRL-style PPO around a composable distribution (Gaussian + Bernoulli, joint log-prob = sum); truncation bootstraps from `V(final_obs)`, termination does not. `rl/train.py`: `make_vec_env`, TensorBoard, `save_checkpoint` with TASK-059 metadata, resume, and a recorded eval (`rl/evaluate.py`, `rl/rollout.py`) at each checkpoint. go_to_ball: mean return positive by ~16k steps, +3.39 at the 200k default budget. | `tests/test_ppo.py`, `tests/test_train.py`, SETUP_LOG TASK-056 |
 | TASK-080 | One `train.seed`: worker i resets with `seed + i` (scenario sampling, and perception noise drawn from the env RNG), the trainer's `Collector` samples actions from a generator seeded with `seed`, network init from `torch.manual_seed(seed)`. Opponents do not act yet. | `tests/test_seeding.py` |
 | TASK-081 | Relabelling `us`/`them` IDs (match-day `{7,1,12,4}` and a shuffle) leaves every registered builder's output, and a PPO agent's action distribution and value, bit-identical. | `tests/test_obs.py` |
+| TASK-058 | `apps/eval.py`: deterministic policy on a fixed seed set (from 1,000,000) in `tracked` perception, rebuilt from the run's own config through `make_env`; writes `eval.json` (per-episode return, done reason, goal difference, per-term totals and distributions) and `rollouts/*.npz` (newest ten). `--render vision --realtime` streams live. 6v6 two-minute rollout: 1.43 MB. | `tests/test_eval.py`, SETUP_LOG TASK-058 |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -119,7 +120,6 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-058** | **`apps/eval.py` and rollouts.** Deterministic policy on a fixed seed set, `tracked` perception, configured opponent; reports goal difference and per-term reward distributions per episode; records episodes as rollout files (`rl/rollout.py`), keeping the newest ten. `--render vision --realtime` streams live. | M | `eval --checkpoint runs/x/latest.pt` writes `runs/x/eval.json` and `runs/x/rollouts/*.npz`; a 6v6 two-minute rollout is under 5 MB. |
 | **TASK-082** | **`apps/replay.py`.** Streams a rollout file to `ssl-vision-client` through `VisionPublisher`, pausable and seekable. | S | A recorded skill episode plays back in the browser at realtime. |
 
 ### 3.7 Trust in the build

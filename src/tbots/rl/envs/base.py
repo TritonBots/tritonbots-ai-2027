@@ -83,6 +83,7 @@ class SSLEnv(gym.Env):
         self._truth: WorldState | None = None
         self._perceived: WorldState | None = None
         self._publisher: Any = None  # set up lazily for render_mode == "vision"
+        self._rendered = 0
         # Called after every physics tick with (transition, per-term reward).
         # Evaluation records rollouts through it; it must not touch the env.
         self.tick_hook: Callable[[Transition, dict[str, float]], None] | None = None
@@ -198,7 +199,13 @@ class SSLEnv(gym.Env):
                 from tbots.net.vision_publisher import VisionPublisher
                 self._publisher = VisionPublisher(geometry=self.backend.geometry)
                 self._publisher.publish_geometry()
+                self._rendered = 0
             self._publisher.publish(self._truth)
+            # Re-send geometry every 5 s, as viz_rsim does, so a browser
+            # opened mid-episode still draws the field.
+            self._rendered += 1
+            if self._rendered % 300 == 0:
+                self._publisher.publish_geometry()
 
     def close(self) -> None:
         if self._publisher is not None:

@@ -2544,3 +2544,36 @@ Deviations:   The builder half landed with TASK-053; this adds the policy
               half. A new builder cannot skip it: `test_obs.py` fails if a
               registered builder has no golden vector, and the relabel tests
               run over that same set.
+
+## TASK-058 — `apps/eval.py` and rollouts            [PASS]
+Verification: `python -m tbots.apps.eval --checkpoint runs/gtb/latest.pt`
+              (the TASK-056 go_to_ball run) -> runs/gtb/eval.json and 10
+              rollouts in runs/gtb/rollouts/ (newest ten kept of the 12
+              written); 10 episodes, mean return 2.53 +- 1.47, 4
+              SKILL_SUCCESS / 6 TIMEOUT, per-term distributions reported.
+              `--episodes 2 --render vision --realtime` with a multicast
+              receiver on 224.5.23.2:10006: 605 detection frames (603 ticks +
+              2 resets) and 3 geometry packets for 10.05 s of play in 13.8 s
+              wall time including startup.
+              `pytest -q tests/test_eval.py` -> 4 passed: eval.json and
+              rollouts written, per-term totals sum to the return, same
+              result twice on the fixed seeds, pruning keeps the newest ten,
+              and a 6v6 two-minute (7,201-frame) rollout, every robot moving,
+              saves at 1.43 MB (< 5 MB). `make lint`, `make test` clean.
+Deviations:   - "Configured opponent": the skill env has none; everyone but
+                the ego robot stands still. The opponent pool is TASK-057.
+              - `SSLEnv.render` now re-sends field geometry every 300 ticks,
+                as viz_rsim does; before, a browser opened mid-episode never
+                drew the field.
+              - Trailing `key=value` arguments override the run's recorded
+                config (OmegaConf dotlist), e.g. `env.n_them=1`.
+              - --render refuses a port that already has a vision publisher,
+                like viz_rsim and duel.
+Notes:        FINDING (go_to_ball, not the pipeline): several deterministic
+              TIMEOUT episodes closed more than 5 m on the ball without ever
+              coming within the 0.18 m success radius, consistent with the
+              robot pushing the ball ahead of itself. Whoever tunes the task
+              should watch those rollouts (`apps/replay.py`) before changing
+              the reward or the radius.
+              The "trained with perception 'noisy', running with 'tracked'"
+              warning on every eval is TASK-059's rule, by design.
