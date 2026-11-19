@@ -52,6 +52,8 @@ before TASK-070, and is superseded by the table above.
 | I want to... | Go to |
 |---|---|
 | write a reward function | `src/tbots/rl/rewards/` |
+| train a new learned skill | `python -m tbots.rl.new_task NAME` → `src/tbots/rl/tasks/` |
+| train / evaluate / replay | `python -m tbots.rl.train`, `tbots.apps.eval`, `tbots.apps.replay` |
 | write a skill | `src/tbots/skills/` |
 | write a tactic | `src/tbots/tactics/` |
 | change field dimensions | `src/tbots/core/geometry.py` |

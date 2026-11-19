@@ -2626,3 +2626,66 @@ Deviations:   - The registry half (`SkillTask`, `register_task`, auto-import
                 gate's "runs" holds; the number is a floor, not exact.
               - The scaffold refuses an upper-case, keyword, reserved or
                 already-registered name, and refuses to overwrite any file.
+
+## TASK-005 — macOS path end to end            [BLOCKED]
+Verification: none. Needs a Mac; this run had only the WSL2 dev box.
+Deviations:   None.
+Notes:        Nothing in TASK-075..082 is Linux-specific except what already
+              was (the networked backend). New code to exercise on the Mac:
+              `rl/vec.py` starts workers with multiprocessing `spawn` (the
+              macOS default anyway), and `apps/replay.py` reads keys with
+              termios/tty (POSIX, present on macOS).
+
+## TASK-008 — fresh-clone rehearsal by someone else            [BLOCKED]
+Verification: none. By definition needs a second person.
+Deviations:   None.
+Notes:        The nearest substitute was done: ONBOARDING 1.7's code blocks
+              were extracted verbatim from the document into a fresh worktree
+              and run (see "ONBOARDING 1.7 rehearsed" below). That proves the
+              text matches the code, not that a newcomer can follow it.
+
+## TASK-009 — GitHub issues, owners, review rotation, branch protection   [BLOCKED]
+Verification: none.
+Deviations:   None.
+Notes:        Not done on purpose. Creating issues and changing branch
+              protection on TritonBots/tritonbots-ai-2027 are outward-facing
+              changes to a shared repository, and owners and a rotation are
+              people decisions. Needs a human to name owners and to approve
+              the `gh issue create` / branch-protection calls.
+
+## TASK-060..064 — the Atlantis cluster            [BLOCKED]
+Verification: none. This run had no Atlantis access.
+Deviations:   None.
+Notes:        What the code now offers them: TASK-064's benchmark is
+              `python -m tbots.rl.vec --workers 1 8 32 env=div_b_6v6
+              env.perception.mode=tracked`; TASK-061's job script is in
+              ONBOARDING "Launching a training run".
+              FINDING for TASK-061: that script passed
+              `train.resume_from=$RUN_DIR/latest.pt` unconditionally, and
+              $RUN_DIR contains the job id, so on every first run the file
+              does not exist and `train` raises FileNotFoundError. The
+              ONBOARDING copy now passes it only if the file exists; verify
+              when committing `scripts/train_atlantis.slurm`.
+              TASK-062: CI now installs torch from the CPU index; the GPU
+              node pin is still open.
+
+## ONBOARDING 1.7 rehearsed (the "ready for recruitment" sentence)   [PASS]
+Verification: Fresh worktree of this branch. ONBOARDING section 1.7's two
+              python blocks and one yaml block were EXTRACTED from the
+              document by script (not retyped) into rewards/mine.py,
+              rewards/__init__.py and configs/reward/approach.yaml;
+              `reward_names()` then listed `approach_ball` beside the
+              built-ins. Step 4 exactly as written (`train reward=approach
+              train.total_steps=500000 train.num_envs=8
+              train.run_dir=runs/approach_v1`) -> 501,760 steps, ~920 steps/s,
+              training return (last 100) 43 at 10k, 187 at 100k, 206 at
+              the end. Step 5's eval (tracked, 10 fixed seeds,
+              deterministic): 10/10 SKILL_SUCCESS. The robot drives at the
+              ball. Worktree removed.
+Deviations:   Step 5's `--render vision --realtime` was not watched in a
+              browser (see TASK-082); the rendering path was verified off the
+              wire under TASK-058.
+Notes:        `approach_ball` pays per SECOND (it divides by dt), so returns
+              are in the hundreds where go_to_ball's are single digits. That
+              is the exercise as written and it learns; it is worth a
+              sentence in 1.7 if recruits compare numbers across rewards.
