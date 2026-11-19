@@ -73,6 +73,7 @@ it, because that is where real runs happen.
 | TASK-055 | `rl/vec.py`: `make_vec_env(cfg, n)` spawns one `make_env` per subprocess with `OMP_NUM_THREADS=1` and SAME_STEP autoreset; `python -m tbots.rl.vec` benchmarks. 6v6 on the (throttled) dev box: 139 / 674 / 837 steps/s for 1 / 8 / 32 workers in `truth`, 102 / 526 / 589 in `tracked`. | README, `tests/test_vec.py` |
 | TASK-059 | `rl/artifacts.py`: `checkpoint_metadata()` records builder name and size, codec spec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, task, git SHA. `check_compatible()` refuses builder/codec/`dt` mismatches (codec = name, speed scales, accel limits, `action_repeat`), warns on perception mode, never checks SHA, stage, task or kick/dribbler speeds. | `tests/test_rl_artifacts.py` |
 | TASK-056 | `rl/algo/{distributions,ppo}.py`: CleanRL-style PPO around a composable distribution (Gaussian + Bernoulli, joint log-prob = sum); truncation bootstraps from `V(final_obs)`, termination does not. `rl/train.py`: `make_vec_env`, TensorBoard, `save_checkpoint` with TASK-059 metadata, resume, and a recorded eval (`rl/evaluate.py`, `rl/rollout.py`) at each checkpoint. go_to_ball: mean return positive by ~16k steps, +3.39 at the 200k default budget. | `tests/test_ppo.py`, `tests/test_train.py`, SETUP_LOG TASK-056 |
+| TASK-080 | One `train.seed`: worker i resets with `seed + i` (scenario sampling, and perception noise drawn from the env RNG), the trainer's `Collector` samples actions from a generator seeded with `seed`, network init from `torch.manual_seed(seed)`. Opponents do not act yet. | `tests/test_seeding.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -112,7 +113,6 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-080** | **Seeding and determinism.** One seed through scenarios, perception noise, opponents, policy sampling. | S | Two runs with the same seed produce identical first 100 transitions per worker. |
 | **TASK-081** | **Robot-ID relabel invariance.** Relabel `us` and `them` IDs, assert every builder's output and a policy's output are unchanged. | S | The test exists and passes for every registered builder. |
 
 ### 3.6 Watching it play

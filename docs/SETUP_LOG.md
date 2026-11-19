@@ -2516,3 +2516,20 @@ Deviations:   - The per-checkpoint eval (deterministic policy, `tracked`
                 configs/train/default.yaml.
 Notes:        A CPU-throttled host (see TASK-055) ran this at 600-900
               steps/s with 8 workers on the 1v0 env.
+
+## TASK-080 — seeding and determinism            [PASS]
+Verification: `pytest -q tests/test_seeding.py` -> 2 passed: two runs of
+              the trainer's own `Collector` with seed 7, 3 async workers,
+              produce bit-identical first 100 transitions per worker
+              (observation, both action parts, reward, terminated,
+              truncated), in `noisy` and in `tracked` perception; seed 8
+              differs, and workers within a run differ from each other.
+              `make lint`, `make test` clean.
+Deviations:   - Opponents are not seeded because none act yet (everyone but
+                the ego robot stands still). The `Collector` docstring says
+                TASK-057's opponents must draw from the same seed.
+              - Minibatch shuffling uses its own generator (`seed + 1`), so
+                it does not perturb the action-sampling stream.
+Notes:        The mechanism landed with TASK-076 (perception RNG drawn from
+              the env RNG), TASK-055 (worker i reset with seed + i) and
+              TASK-056 (seeded generators). This task adds the test.
