@@ -2230,3 +2230,35 @@ Deviations:   None in the code. The work landed in 5d1eb4e ("Completed
 Notes:        5d1eb4e also claims TASK-041 and TASK-077. Neither is closed
               here: both are Tier 2, and neither has been checked against
               its Done-when line. They stay open on the board.
+
+## TASK-075 — `PerceptionSim`            [PASS]
+Verification: `pytest -q tests/test_perception_sim.py` -> 11 passed, on real
+              rSim trajectories: zero noise returns the input shifted by the
+              sampled delay tick for tick; dropout 0.3 marks robots
+              `visible=False` and holds their last perceived pose; seeded
+              runs identical (and different seeds differ) in `noisy` and
+              `tracked`; `tracked` through the real Tracker lands within
+              5 cm of truth after settling with a 30 ms delay.
+              `make lint` clean; `make test` all pass.
+Deviations:   - Added `Perception`, a small stage that runs whichever of
+                `truth`/`noisy`/`tracked` the config names, so the env and
+                `make_env` hold one object. The task text names only
+                `PerceptionSim`.
+              - Delay is quantised to whole physics ticks (round(latency/dt)):
+                rSim only has states at tick boundaries.
+              - `noisy` keeps the delayed truth's velocities (no tracker, so
+                nothing estimates them). Only pose is jittered.
+              - Synthetic `RobotFeedback` is the CURRENT truth, not delayed:
+                it models the radio, not the camera.
+              - The first frame of an episode is never dropped; an object
+                missing from it has no last pose to hold, and the tracker
+                would not know the ego robot exists.
+              - Config keys renamed from the superseded `domain_randomization`
+                block and given SI units (`latency_s`, `robot_pos_std_m`, ...).
+                `from_mapping` rejects unknown keys so an old block fails
+                loudly instead of being ignored.
+Notes:        FINDING: command latency (10-20 ms in the old
+              `domain_randomization` config) is no longer modelled anywhere.
+              It is not perception, and no task owns it. `actuation_delay_s`
+              only sets how far the tracker predicts. Recorded for whoever
+              owns sim-to-real; the old wrapper's queue is reusable.

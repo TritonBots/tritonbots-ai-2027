@@ -65,6 +65,7 @@ it, because that is where real runs happen.
 | TASK-012 | `apps/wiggle.py` drives a circle through ER-Force and fits it from vision: radius 0.51 m against 0.50 m commanded, both colours. | `python -m tbots.apps.wiggle` |
 | TASK-007 | `skills/__init__.py` imports the built-in skills, so `skill_names()` is `['attack', 'go_to_point', 'goalkeep']` and `build_skill` round-trips. | `tests/test_skills.py` |
 | TASK-014 | `NetworkBackend.observe()`: vision through the tracker, `GameState` and telemetry attached, Division checked on the wire. The parity test runs: GoToPoint reaches 36 mm against ER-Force (blue) and 35 mm (yellow, defending +x). | `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py tests/test_backend_parity.py` |
+| TASK-075 | `perception/sim.py`: `PerceptionSim` delays truth by whole ticks, jitters poses, drops objects; `noisy` holds dropped objects at their last pose with `visible=False`; `tracked` emits `DetectionFrame`s plus synthetic `RobotFeedback` into the real `Tracker`. `Perception` runs any of the three modes. Ranges sampled per episode. | `tests/test_perception_sim.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -93,7 +94,6 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-075** | **`PerceptionSim`** in `perception/sim.py`. Takes ground-truth `WorldState`, emits delayed, noisy, dropout-marked state. Two outputs: a `WorldState` (`noisy` mode) and `DetectionFrame`s plus synthetic `RobotFeedback` (`tracked` mode). Parameters randomised per episode from config. | M | Test: with zero noise the output equals the input shifted by the sampled delay; with dropout, some robots are `visible=False`; seeded runs are identical. |
 
 ### 3.4 Environment and the contracts recruits touch
 
