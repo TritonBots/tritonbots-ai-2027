@@ -515,9 +515,13 @@ GIL-release patch in our fork is a real speedup and waits for a measured
 number that disappoints. Since robot counts never change inside a run, the
 vector env is built once by `make_env` and torn down at the end.
 
-Single-process throughput: 521 steps/s at 6v6, 60 Hz, on the WSL2 dev box;
-about 250 on Atlantis. Atlantis compute nodes may have no outbound internet,
-so W&B runs offline and syncs from the login node. Walltime limits make
+Measured throughput is in the README (TASK-055): at 6v6, 8 workers give
+about 5x one worker on an 8-CPU dev box, oversubscribing to 32 adds ~25%,
+and `tracked` perception costs 25-30% against `truth`. Atlantis is
+unmeasured since TASK-070 (it was about half the dev box before).
+
+Atlantis compute nodes may have no outbound internet, so W&B runs offline
+and syncs from the login node. Walltime limits make
 checkpoint-and-resume non-optional.
 
 ---

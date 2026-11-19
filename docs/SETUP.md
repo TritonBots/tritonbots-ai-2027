@@ -3899,7 +3899,12 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
       - run: uv venv --python 3.11
-      - run: uv pip install -e ".[dev]"
+      # torch from the CPU-only index FIRST: the default PyPI wheel bundles
+      # CUDA libraries (several GB) that CI never uses. The trainer,
+      # checkpoints and their tests need torch, so `train` is installed too;
+      # the second install sees torch already satisfied and keeps the CPU one.
+      - run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: uv pip install -e ".[dev,train]"
       - run: uv pip install -e third_party/rsim
       - run: make proto
       - run: make lint

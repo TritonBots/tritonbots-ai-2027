@@ -1,5 +1,28 @@
-total_steps: 200000
-num_envs: 1
+# The trainer (rl/train.py, rl/algo/ppo.py). Override any key on the command
+# line: `train.total_steps=500000 train.num_envs=8 train.run_dir=runs/NAME`.
+total_steps: 200000           # environment steps, summed over all workers
+num_envs: 8                   # subprocess workers; about one per logical CPU
 run_dir: runs/default
-resume_from: null
-checkpoint_interval_steps: 10000
+resume_from: null             # a latest.pt to start from (see below)
+stage: null                   # curriculum stage label, recorded in checkpoints
+seed: 1                       # one seed: scenarios, perception, policy sampling
+device: cpu
+
+checkpoint_interval_steps: 50000   # also when the short eval runs
+eval_episodes: 3                   # per checkpoint, tracked perception
+keep_rollouts: 10                  # newest N rollout files kept in run_dir/rollouts
+
+# PPO. CleanRL's continuous-control defaults, which go_to_ball learns with.
+hidden: 64
+num_steps: 256                # steps per worker per update
+learning_rate: 3.0e-4
+anneal_lr: true
+gamma: 0.99
+gae_lambda: 0.95
+update_epochs: 10
+num_minibatches: 8
+clip_coef: 0.2
+ent_coef: 0.0
+vf_coef: 0.5
+max_grad_norm: 0.5
+target_kl: null

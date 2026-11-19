@@ -1,17 +1,29 @@
+# Six a side on the Division B field.
+#
+# Until the tactics env exists (TASK-051, which needs the Coach and the set
+# encoder) this is a SKILL env with a full field of bodies: the task's ego
+# robot learns among five still teammates and six still opponents. When
+# TASK-051 lands, `kind` becomes `tactics` and this file grows its keys.
+kind: skill
 division: B
 n_us: 6
 n_them: 6
-control_hz: 60          # MUST match everywhere. See the note below.
-max_episode_seconds: 120
+control_hz: 60          # MUST match everywhere
 
 backend:
   kind: rsim
   field_type: 1         # verified in docs/RSIM_FACTS.md -- 0 is Division A
 
-domain_randomization:
-  enabled: true
-  vision_latency_ms: [20, 45]
-  command_latency_ms: [10, 20]
-  position_noise_m: 0.005
-  angle_noise_rad: 0.02
-  dropout_probability: 0.02
+# perception/sim.py. Replaces the old `domain_randomization` block, which
+# described an observation-vector wrapper (superseded, TASK-075).
+perception:
+  mode: noisy
+  latency_s: [0.020, 0.045]
+  robot_pos_std_m: [0.0, 0.005]
+  robot_angle_std_rad: [0.0, 0.02]
+  ball_pos_std_m: [0.0, 0.005]
+  dropout: [0.0, 0.04]
+  actuation_delay_s: 0.0
+
+out_of_bounds: terminate
+codec: {}

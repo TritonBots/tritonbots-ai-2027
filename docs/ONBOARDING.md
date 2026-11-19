@@ -1,21 +1,17 @@
 # TritonBots — Onboarding
 
-**Welcome.** By the end of today you will have the codebase running, watched six robots move in your browser, and talked to the referee. Once `tbots.rl.train` and `tbots.apps.eval` land (see the status note below), the same day also gets you a trained policy and code that changed how it behaves — that part of this guide is written for that point.
+**Welcome.** By the end of today you will have the codebase running, watched six robots move in your browser, talked to the referee, trained a policy against a reward function you wrote yourself, and watched it play.
 
 **This guide assumes the codebase already exists and works.** If you are standing up a new repo from scratch, you want `docs/SETUP.md` instead. If you are a new team member joining an existing project, you are in the right place.
 
 **Time:** about 4 hours for Part 1. Parts 2 and 3 are your first and second weeks.
 
-> **Status as of 2026-08-25.** Sections 1.1–1.5 — install, build, watch rSim
-> render in the browser, talk to the referee — work today, exactly as
-> written. **1.6 onward describe the finished system and are not runnable
-> yet.** `python -m tbots.rl.train` raises `NotImplementedError("TASK-056")`
-> on purpose: the RL, skills, and tactics layers are deliberately left as
-> recruit work. `tbots.apps.eval`, referenced throughout 1.6, 1.7, and
-> Part 2, does not exist in the repo yet either — it is now tracked as
-> **TASK-058** alongside TASK-056. Everything below is accurate about *what
-> will exist*; treat 1.6+ as a preview to read, not a command to run, until
-> those land.
+> **Status as of 2026-11-19.** All of Part 1 runs as written: training
+> (`tbots.rl.train`), evaluation (`tbots.apps.eval`), replay
+> (`tbots.apps.replay`) and the task scaffold (`tbots.rl.new_task`) exist.
+> Still to come, and marked where they appear: the tactics env and the
+> Coach-driven 6v6 (TASK-051, TASK-077), opponents (TASK-057), and
+> `LearnedSkill` in the match stack (TASK-037).
 >
 > **`docs/TASKS.md` is the live board** — current tiers, sizes, and a
 > "done when" gate for every open item. It replaces the board that used to
@@ -498,22 +494,15 @@ If nothing prints, go to [Common errors → No referee messages](#no-referee-mes
 
 ### 1.6 — Your first training run
 
-> **Not runnable yet.** `tbots.rl.train` is TASK-056 — it currently raises
-> `NotImplementedError` on purpose (see the status note at the top of this
-> doc). `tbots.apps.eval`, used below, doesn't exist in the repo at all.
-> This section documents the intended shape of the workflow; treat it as a
-> preview until both land.
-
 ```bash
 python -m tbots.rl.train \
-  env=div_b_6v6 \
   reward=example \
   train.total_steps=200000 \
   train.num_envs=8 \
   train.run_dir=runs/hello
 ```
 
-This trains a tiny policy on a trivial task for a few minutes. It will not learn anything interesting — `configs/reward/example.yaml` contains one placeholder term that returns a constant. **That is the point.** You are verifying the machinery: environments spin up, the policy takes gradient steps, checkpoints land on disk, metrics get logged.
+This trains one robot (the default `env=skill`, task `go_to_ball`) for a few minutes. It will not learn anything interesting — `configs/reward/example.yaml` contains one placeholder term that returns a constant. **That is the point.** You are verifying the machinery: environments spin up, the policy takes gradient steps, checkpoints land on disk, metrics get logged.
 
 Watch it:
 
@@ -524,7 +513,7 @@ tensorboard --logdir runs/          # then open http://localhost:6006
 **Verify:**
 
 ```bash
-ls runs/hello/                      # latest.pt, config.yaml, events.out.tfevents.*
+ls runs/hello/                      # latest.pt, config.yaml, events.out.tfevents.*, rollouts/
 ```
 
 Then watch your trained policy actually play:
@@ -533,7 +522,9 @@ Then watch your trained policy actually play:
 python -m tbots.apps.eval --checkpoint runs/hello/latest.pt --render vision --realtime
 ```
 
-Same browser tab as before, now driven by a neural network instead of a scripted orbit. It will look random, because you trained it on a constant reward. Next section fixes that.
+Same browser tab as before (http://localhost:8083), now driven by a neural network instead of a scripted orbit. It will look random, because you trained it on a constant reward. Next section fixes that.
+
+Eval also writes `runs/hello/eval.json` (returns, why each episode ended, per-term rewards) and records every episode in `runs/hello/rollouts/`. Watch one again, pausable and seekable, with `python -m tbots.apps.replay runs/hello/rollouts/eval_seed1000000.npz`.
 
 ---
 
@@ -547,12 +538,12 @@ Now you write code. This is the exercise every new recruit does, and it takes ab
 
 Open `src/tbots/rl/rewards/registry.py`. It is short. The whole system is:
 
-- A **reward term** is a class with `__call__(world, prev) -> float` and `reset()`.
+- A **reward term** is a class with `__call__(tr) -> float` and `reset()`. `tr` is a `Transition` (`src/tbots/core/transition.py`): ground truth before and after the step (`tr.prev`, `tr.world`), the commands we sent, the trained robot's id (`tr.ego_id`), the field geometry, `tr.dt`, and `tr.done` — `None` while the episode runs, else why it ended.
 - You register it with the `@register_reward("name")` decorator.
 - A **reward function** is a weighted sum of registered terms, defined in a YAML file.
 - Nobody edits an environment to change a reward. Ever.
 
-Also open `src/tbots/core/state.py` — that is the `WorldState` you will be reading from. It is thirty lines and you should know all of it.
+Also open `src/tbots/core/state.py` — that is the `WorldState` in `tr.world` and `tr.prev`. It is short and you should know all of it.
 
 #### Step 2 — write a term
 
@@ -563,7 +554,7 @@ Create `src/tbots/rl/rewards/mine.py`:
 
 import math
 
-from tbots.core.state import WorldState
+from tbots.core.transition import Transition
 from tbots.rl.rewards.registry import register_reward
 
 
@@ -577,21 +568,17 @@ class ApproachBall:
     the rate of approach teaches it to actually go.
     """
 
-    def __init__(self, robot_id: int = 0) -> None:
-        self.robot_id = robot_id
-
     def reset(self) -> None:
         pass
 
-    def __call__(self, world: WorldState, prev: WorldState) -> float:
-        me = world.us.get(self.robot_id)
-        was = prev.us.get(self.robot_id)
+    def __call__(self, tr: Transition) -> float:
+        me = tr.world.us.get(tr.ego_id)
+        was = tr.prev.us.get(tr.ego_id)
         if me is None or was is None:
             return 0.0
-        d_now = math.hypot(me.x - world.ball.x, me.y - world.ball.y)
-        d_was = math.hypot(was.x - prev.ball.x, was.y - prev.ball.y)
-        dt = max(world.t - prev.t, 1e-6)
-        return (d_was - d_now) / dt
+        d_now = math.hypot(me.x - tr.world.ball.x, me.y - tr.world.ball.y)
+        d_was = math.hypot(was.x - tr.prev.ball.x, was.y - tr.prev.ball.y)
+        return (d_was - d_now) / tr.dt
 ```
 
 Register it for import in `src/tbots/rl/rewards/__init__.py`:
@@ -606,14 +593,13 @@ Create `configs/reward/approach.yaml`:
 
 ```yaml
 terms:
-  - {name: approach_ball, weight: 1.0, robot_id: 0}
+  - {name: approach_ball, weight: 1.0}
 ```
 
 #### Step 4 — train
 
 ```bash
 python -m tbots.rl.train \
-  env=div_b_6v6 \
   reward=approach \
   train.total_steps=500000 \
   train.num_envs=8 \
@@ -694,7 +680,7 @@ You do not write a special class. You write a **task** and let `LearnedSkill` wr
 2. Fill in the hooks: a scenario sampler (initial positions, randomised), a success predicate, a failure predicate, and which observation builder and action codec to use.
 3. Write reward terms in `src/tbots/rl/rewards/` and list them in the YAML.
 4. `python -m tbots.rl.train env=skill task=dribble`.
-5. Register it in config: `skills: {dribble: {kind: learned, checkpoint: runs/dribble/latest.pt}}`.
+5. Register it in config: `skills: {dribble: {kind: learned, checkpoint: runs/dribble/latest.pt}}`. *(`LearnedSkill` is TASK-037 and not built yet; steps 1–4 work today.)*
 
 That last line is the whole payoff of the interface. You trained something on Tuesday; on Wednesday it is running in the match stack, and no caller changed.
 
@@ -807,10 +793,12 @@ make fmt && make lint && make test
 | Watch rSim in the browser | `python -m tbots.apps.viz_rsim --realtime`, then http://localhost:8083 (compose stack) or :8082 (native ssl-vision-client on macOS) |
 | Benchmark my machine | `python -m tbots.apps.viz_rsim --seconds 60 \| tail -1` |
 | Monitor the referee | `python -m tbots.apps.ref_monitor --team "TritonBots"` |
-| Train (not yet implemented, TASK-056) | `python -m tbots.rl.train env=div_b_6v6 reward=NAME train.run_dir=runs/NAME` |
+| Train | `python -m tbots.rl.train task=NAME reward=NAME train.run_dir=runs/NAME` |
+| Start a new learned skill | `python -m tbots.rl.new_task NAME` |
 | Resume a run | add `train.resume_from=runs/NAME/latest.pt` |
 | Watch metrics | `tensorboard --logdir runs/` |
-| Evaluate a checkpoint (`apps/eval.py` doesn't exist yet) | `python -m tbots.apps.eval --checkpoint runs/NAME/latest.pt --render vision --realtime` |
+| Evaluate a checkpoint | `python -m tbots.apps.eval --checkpoint runs/NAME/latest.pt --render vision --realtime` |
+| Replay a recorded episode | `python -m tbots.apps.replay runs/NAME/rollouts/FILE.npz` |
 | List registered rewards | `python -c "import tbots.rl.rewards as r; print(r.reward_names())"` |
 | List registered skills | `python -c "from tbots.skills.base import skill_names; import tbots.skills; print(skill_names())"` |
 | Start the stack | `docker compose up -d` |
@@ -919,11 +907,11 @@ rSim never touches the GPU — it's single-threaded C++ physics (`docs/RSIM_FACT
 python -m tbots.apps.viz_rsim --seconds 60 | tail -1
 ```
 
-Atlantis, 6v6, 60 Hz, single process: ~250 steps/s
+Atlantis throughput has not been measured since TASK-070; TASK-064's smoke job runs `python -m tbots.rl.vec` there. On the dev box, see the README table.
 
 ### Launching a training run
 
-> **Not runnable yet.** Same caveat as §1.6 — `tbots.rl.train` (TASK-056) still raises `NotImplementedError`. The script below is Atlantis's equivalent of `docs/SETUP.md` §17.2's `scripts/train.slurm`, written in advance so it's ready the moment that command exists. It skips the Apptainer image entirely — there's no container runtime on this cluster — and runs directly inside the venv instead.
+> **Not yet run on Atlantis.** `tbots.rl.train` works locally; this script has not been submitted (committing and verifying it is TASK-061). It is Atlantis's equivalent of `docs/SETUP.md` §17.2's `scripts/train.slurm`. It skips the Apptainer image entirely — there's no container runtime on this cluster — and runs directly inside the venv instead.
 
 ```bash
 #!/bin/bash
@@ -946,9 +934,14 @@ export MKL_NUM_THREADS=1
 
 RUN_DIR="runs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
 mkdir -p "$RUN_DIR" logs
+# Resume only if this job already wrote a checkpoint (a requeue keeps the
+# job id). On a first run there is nothing to resume, and passing a path that
+# does not exist stops the trainer.
+RESUME=()
+[ -f "$RUN_DIR/latest.pt" ] && RESUME=(train.resume_from="$RUN_DIR/latest.pt")
 python -m tbots.rl.train \
-  env=div_b_6v6 reward="${REWARD:-example}" \
-  train.num_envs=32 train.run_dir="$RUN_DIR" train.resume_from="${RUN_DIR}/latest.pt"
+  task="${TASK:-go_to_ball}" reward="${REWARD:-go_to_ball}" \
+  train.num_envs=32 train.run_dir="$RUN_DIR" "${RESUME[@]}"
 ```
 
 `OMP_NUM_THREADS=1`/`MKL_NUM_THREADS=1` matter for the same reason `docs/SETUP.md` §17.1 flags them: rSim parallelizes across processes, not threads, and PyTorch/BLAS spawning their own threads inside every one of those 32 workers will fight the same 32 cores for time and collapse throughput below single-process.
@@ -984,8 +977,14 @@ Work down this list in order. Do not skip to hyperparameters.
 That is a sim-to-sim gap, and finding it now is a gift. Run the parity test:
 
 ```bash
-TBOTS_NETWORK_TESTS=1 pytest -q tests/test_backend_parity.py
+docker compose up -d simulator game-controller
+# In the game controller UI (http://localhost:8081), name one team exactly
+# "TritonBots". Until you do, the test fails telling you so.
+TBOTS_NETWORK_TESTS=1 pytest -q tests/test_network.py tests/test_backend_parity.py
 ```
+
+`python -m tbots.apps.wiggle` is the quicker first check: it drives one robot
+in a circle and needs no referee at all.
 
 Usual causes, in order: domain randomisation was off during training; a units or frame mismatch in the network backend; the tracker's velocity estimates differ from rSim's ground truth; latency compensation is missing.
 

@@ -52,13 +52,32 @@ it, because that is where real runs happen.
 | Run artifacts | `rl/artifacts.py`: resolved config, atomic checkpoints, `format_version`. Metadata extends in TASK-059. | `tests/test_rl_artifacts.py` |
 | Hydra composition | `configs/config.yaml` composes `env`/`reward`/`train`. | `python -m tbots.rl.train train.run_dir=/tmp/x` |
 | External stack | `docker compose up -d`: game controller 3.21.0, ER-Force, vision-client. | SETUP_LOG Step 13 |
-| Throughput | 521 steps/s, 6v6, single process on WSL2; about 250 on Atlantis. Measured before TASK-070, so it was 521 steps of 17 ms; re-measure with TASK-055. | README |
 | TASK-070 | rSim steps at a true 1/60 s. Our fork's `SSL` takes a float-seconds timestep; an int is still milliseconds. | `tests/test_rsim_backend.py`, `docs/RSIM_FACTS.md` |
 | TASK-071 | The compose stack runs Division B (`GEOMETRY: "2020B"`), verified off the wire and in `ssl-vision-client`. | SETUP_LOG TASK-071 |
 | TASK-072 | `Backend` / `SimBackend` split. Opponents commandable, `place()`, unknown ids raise, `reconfigure()` gone. | `tests/test_rsim_backend.py` |
 | TASK-004 | CI pins the verified rSim field type, layouts, action offsets, and 60 Hz timestep; it also runs the verification probe. | `tests/test_rsim_backend.py`, `.github/workflows/ci.yml` |
 | TASK-073 | `as_opponent()` rotates a world by 180° and exchanges `us` and `them` for self-play. | `tests/test_perspective.py` |
 | TASK-074 | Frozen perception dataclasses, capture time, and telemetry are part of the core world contract. | `tests/test_core.py`, `mypy src/tbots/core` |
+| TASK-020 | `perception/tracker.py`: per-object Kalman filters (constant acceleration for robots, constant velocity for ball and heading), late-camera rejection, manoeuvre reset, extrapolation capped at 0.25 s, `Perspective` applied once at the end. Worst error 14.4 mm over ten seeds at 30 ms latency on a contact-free rSim trajectory. | `tests/test_tracker.py`, SETUP_LOG TASK-020 |
+| TASK-010 | `net/vision.py`: decode to meters, drop duplicates, one tick per camera cycle, vision-PC clock mapped onto ours, wire geometry exposed. | `tests/test_vision.py`, `tests/test_network.py` |
+| TASK-011 | `net/robot_control.py`: one `RobotControl` per tick, port picked per packet from the current colour, refuses to guess an unresolved one, dribbler-contact feedback. | `tests/test_robot_control.py`, `tests/test_network.py` |
+| TASK-012 | `apps/wiggle.py` drives a circle through ER-Force and fits it from vision: radius 0.51 m against 0.50 m commanded, both colours. | `python -m tbots.apps.wiggle` |
+| TASK-007 | `skills/__init__.py` imports the built-in skills, so `skill_names()` is `['attack', 'go_to_point', 'goalkeep']` and `build_skill` round-trips. | `tests/test_skills.py` |
+| TASK-014 | `NetworkBackend.observe()`: vision through the tracker, `GameState` and telemetry attached, Division checked on the wire. The parity test runs: GoToPoint reaches 36 mm against ER-Force (blue) and 35 mm (yellow, defending +x). | `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py tests/test_backend_parity.py` |
+| TASK-075 | `perception/sim.py`: `PerceptionSim` delays truth by whole ticks, jitters poses, drops objects; `noisy` holds dropped objects at their last pose with `visible=False`; `tracked` emits `DetectionFrame`s plus synthetic `RobotFeedback` into the real `Tracker`. `Perception` runs any of the three modes. Ranges sampled per episode. | `tests/test_perception_sim.py` |
+| TASK-076 | `core/transition.py`: frozen `Transition(world, prev, commands, ego_id, geometry, dt, done)` and the `Done` enum (only `TIMEOUT` is a truncation). Reward terms take `tr`. `SSLEnv` holds truth (reward, termination) and perceived (observation) worlds, sums reward over the ticks of one step, and ends on goal, out-of-bounds, task predicate or timeout. | `tests/test_core.py`, `tests/test_rewards.py` |
+| TASK-078 | `rl/codec.py`: registered `skill_v1` codec. `{"move": Box(3), "flags": MultiBinary(2)}`; norm-limited speed; kick/dribble booleans map to kwarg speeds; kick clamped to 6.5 m/s; per-tick rate limit from `core/limits.py`; `action_repeat`; `spec()` for checkpoints. | `tests/test_codec.py` |
+| TASK-053 | `rl/obs/builders.py`: `ego_v1` (33 floats, egocentric: ball, goals, nearest two teammates and opponents ordered by distance) and `global_v1` (113 floats, fixed six slots a side ordered by position). Fixed scaling constants, no ID values, golden vectors pinned. Set encoder stays TASK-083. | `tests/test_obs.py` |
+| TASK-050 | `rl/envs/skill_env.py`: `SkillEnv` over a `SkillTask` — spaces from codec and builder, `SKILL_SUCCESS`/`SKILL_FAILURE` from the task predicates, out-of-bounds terminates. Ships with the `SkillTask` registry (`rl/tasks/`) and the reference `go_to_ball` task. | `tests/test_skill_env.py` |
+| TASK-006 | `rl/factory.py`: `make_env(cfg)` builds backend → `Perception` → `SkillEnv`; `compose_config()` gives tests the CLI's config; `resolve_config()` makes the task's default reward explicit for the run record. New `configs/env/skill.yaml` (default); `div_b_6v6` is a 6v6 skill env until TASK-051; `perception:` replaces `domain_randomization`. Network config stays Tier 2. | `tests/test_factory.py` |
+| TASK-055 | `rl/vec.py`: `make_vec_env(cfg, n)` spawns one `make_env` per subprocess with `OMP_NUM_THREADS=1` and SAME_STEP autoreset; `python -m tbots.rl.vec` benchmarks. 6v6 on the (throttled) dev box: 139 / 674 / 837 steps/s for 1 / 8 / 32 workers in `truth`, 102 / 526 / 589 in `tracked`. | README, `tests/test_vec.py` |
+| TASK-059 | `rl/artifacts.py`: `checkpoint_metadata()` records builder name and size, codec spec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, task, git SHA. `check_compatible()` refuses builder/codec/`dt` mismatches (codec = name, speed scales, accel limits, `action_repeat`), warns on perception mode, never checks SHA, stage, task or kick/dribbler speeds. | `tests/test_rl_artifacts.py` |
+| TASK-056 | `rl/algo/{distributions,ppo}.py`: CleanRL-style PPO around a composable distribution (Gaussian + Bernoulli, joint log-prob = sum); truncation bootstraps from `V(final_obs)`, termination does not. `rl/train.py`: `make_vec_env`, TensorBoard, `save_checkpoint` with TASK-059 metadata, resume, and a recorded eval (`rl/evaluate.py`, `rl/rollout.py`) at each checkpoint. go_to_ball: mean return positive by ~16k steps, +3.39 at the 200k default budget. | `tests/test_ppo.py`, `tests/test_train.py`, SETUP_LOG TASK-056 |
+| TASK-080 | One `train.seed`: worker i resets with `seed + i` (scenario sampling, and perception noise drawn from the env RNG), the trainer's `Collector` samples actions from a generator seeded with `seed`, network init from `torch.manual_seed(seed)`. Opponents do not act yet. | `tests/test_seeding.py` |
+| TASK-081 | Relabelling `us`/`them` IDs (match-day `{7,1,12,4}` and a shuffle) leaves every registered builder's output, and a PPO agent's action distribution and value, bit-identical. | `tests/test_obs.py` |
+| TASK-058 | `apps/eval.py`: deterministic policy on a fixed seed set (from 1,000,000) in `tracked` perception, rebuilt from the run's own config through `make_env`; writes `eval.json` (per-episode return, done reason, goal difference, per-term totals and distributions) and `rollouts/*.npz` (newest ten). `--render vision --realtime` streams live. 6v6 two-minute rollout: 1.43 MB. | `tests/test_eval.py`, SETUP_LOG TASK-058 |
+| TASK-082 | `apps/replay.py`: streams a rollout through `VisionPublisher` at real time; space pauses, arrows seek 1 s, `,`/`.` step frames, `-`/`+` speed, `0` restarts; geometry re-sent every 5 s. A recorded go_to_ball episode: 124/124 frames on the wire in 2.051 s for 2.05 s of play. Browser view not checked by eye. | `tests/test_replay.py`, SETUP_LOG TASK-082 |
+| TASK-079 | `SkillTask` registry (`rl/tasks/`, landed with TASK-050) plus `python -m tbots.rl.new_task NAME`, which writes a working task file with every hook documented, a reward YAML and a test, and edits nothing else. Verified on a fresh worktree: `new_task demo`, its test, and `train env=skill task=demo train.total_steps=1000`. | `tests/test_new_task.py`, SETUP_LOG TASK-079 |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -87,37 +106,21 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-075** | **`PerceptionSim`** in `perception/sim.py`. Takes ground-truth `WorldState`, emits delayed, noisy, dropout-marked state. Two outputs: a `WorldState` (`noisy` mode) and `DetectionFrame`s plus synthetic `RobotFeedback` (`tracked` mode). Parameters randomised per episode from config. | M | Test: with zero noise the output equals the input shifted by the sampled delay; with dropout, some robots are `visible=False`; seeded runs are identical. |
-| **TASK-020** | **`perception/tracker.py`.** Association, velocity estimation, extrapolation through dropouts, forward-prediction to `t = now + actuation delay`. Consumes `DetectionFrame`s, applies `Perspective` once at the end. Was Tier 2; `tracked` mode needs it, but `noisy` mode keeps day one unblocked if it slips. | L | Test: feed frames synthesised from a known rSim trajectory with 30 ms latency; tracked positions at `t` are within 2 cm of truth at `t`. |
 
 ### 3.4 Environment and the contracts recruits touch
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-076** | **Two-world `SSLEnv` and `Transition`.** The env holds truth and perceived state; observations come from the perceived world, everything else from truth. Reward terms take a frozen `Transition(world, prev, commands, ego_id, geometry, dt, done)`. `done` is an enum. Update `registry.py` and `example.py`. | M | `pytest tests/test_core.py tests/test_rewards.py`; a term that reads `tr.commands` and `tr.done` runs in one episode. |
-| **TASK-078** | **Action codec** in `rl/codec.py`. `Box(vx, vy, vtheta)` plus kick and dribbler booleans; booleans map to speeds from skill kwargs; acceleration limits from `core`; 6.5 m/s kick clamp; `action_repeat`. Named and registered. | M | Golden test: a fixed action sequence decodes to a fixed `RobotCommand` sequence; a step change in commanded velocity is rate-limited. |
-| **TASK-053** | **Observation builders**, reshaped. Egocentric builder for skills, global fixed-size builder for tactics, fixed scaling constants, no robot-ID value anywhere. Golden-vector test per builder; builders are immutable once a checkpoint exists (a change is a new name). The set encoder proper is Tier 2. | M | `obs_size(name)` matches `build_obs` output for every registered name; golden vectors pass; TASK-081 passes. |
-| **TASK-079** | **`SkillTask` registry and scaffold.** A registered dataclass grouping scenario sampler, success and failure predicates, obs builder, codec, time limit, default reward YAML. `python -m tbots.rl.new_task <name>` writes the file with every hook documented, a reward YAML, and a test. Must be simple enough for a recruit's first afternoon. | M | `new_task demo` followed by `pytest tests/test_task_demo.py` passes on a clean checkout; `train env=skill task=demo train.total_steps=1000` runs. |
-| **TASK-050** | **`rl/envs/skill_env.py`**, now a thin env over a `SkillTask`: spaces from the codec and builder, `done` from the task predicates, out-of-bounds defaults to terminate. | S | One episode of `go_to_ball` runs in `truth`, `noisy` and `tracked` modes. |
-| **TASK-006** | **`make_env(cfg)`** in `rl/factory.py`: backend → `PerceptionSim` → tracker → env → wrappers. The only construction path for train, eval, tests and benchmarks. The network-config half of this task stays Tier 2. | S | `make_env` builds every combination in `configs/`; `rl/train.py`, `apps/eval.py` and `rl/vec.py` call nothing else. |
-| **TASK-007** | **Skill registry wiring.** `skills/__init__.py` imports nothing, so `skill_names()` is `[]` and `build_skill("go_to_point")` raises. | S | Test: registry non-empty and round-trips. |
 
 ### 3.5 Learning
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-056** | **The trainer.** Vendored CleanRL-style PPO in `rl/algo/ppo.py` around a composable action distribution (Box, Bernoulli, and per-robot factorised heads for MAPPO later). Truncation bootstraps, termination does not. `rl/train.py` wires `make_env`, the step loop, TensorBoard, `artifacts.save_checkpoint`, and a short eval at each checkpoint interval. | L | `train env=skill task=go_to_ball` reaches a positive mean episode return within a documented step budget; `runs/NAME/{latest.pt, config.yaml, events.out.tfevents.*, rollouts/}` exist; a truncated-episode test checks the bootstrap. |
-| **TASK-059** | **Checkpoint metadata**, extended: builder name and size, codec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, git SHA. Refuse on builder/codec/`dt` mismatch, warn on perception mode, never check the SHA. | S | Tests for each refusal and the warning. |
-| **TASK-080** | **Seeding and determinism.** One seed through scenarios, perception noise, opponents, policy sampling. | S | Two runs with the same seed produce identical first 100 transitions per worker. |
-| **TASK-081** | **Robot-ID relabel invariance.** Relabel `us` and `them` IDs, assert every builder's output and a policy's output are unchanged. | S | The test exists and passes for every registered builder. |
-| **TASK-055** | **`rl/vec.py`**: subprocess vector env via `make_env`, `OMP_NUM_THREADS=1`, and the throughput benchmark. No in-run reconfigure. | S | A measured steps/s number for 1, 8 and 32 workers is written into README. |
 
 ### 3.6 Watching it play
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-058** | **`apps/eval.py` and rollouts.** Deterministic policy on a fixed seed set, `tracked` perception, configured opponent; reports goal difference and per-term reward distributions per episode; records episodes as rollout files (`rl/rollout.py`), keeping the newest ten. `--render vision --realtime` streams live. | M | `eval --checkpoint runs/x/latest.pt` writes `runs/x/eval.json` and `runs/x/rollouts/*.npz`; a 6v6 two-minute rollout is under 5 MB. |
-| **TASK-082** | **`apps/replay.py`.** Streams a rollout file to `ssl-vision-client` through `VisionPublisher`, pausable and seekable. | S | A recorded skill episode plays back in the browser at realtime. |
 
 ### 3.7 Trust in the build
 
@@ -150,11 +153,12 @@ Three of the four are done — see §2. What is left:
 | **TASK-084** | **Factorised MAPPO heads**: per-robot independent heads on the shared encoder, joint log-prob as a sum, centralised critic, through the TASK-056 distribution interface without touching the trainer loop. |
 | **TASK-057** | **Opponent pool**: uniform over frozen checkpoints plus the scripted baseline; config override pins one; opponent Coach runs on `as_opponent(world)` with ground truth. |
 | **TASK-041** | **`tactics/scripted.py`**: the baseline opponent. Nothing is evaluable at 6v6 without it. Do not let it slip past week two. |
-| TASK-030 to 037 | Skill implementations: `FacePoint`, `Shoot`, `PassTo`, `ReceivePass`, `Dribble`, `Intercept`, `Goalkeep`, `LearnedSkill`. Each learned one is a `SkillTask`. Classic recruit work. |
+| TASK-030 to 037 | Skill implementations: `FacePoint`, `Shoot`, `PassTo`, `ReceivePass`, `Dribble`, `Intercept`, `Goalkeep`, `LearnedSkill`. Each learned one is a `SkillTask`. Classic recruit work. **2026-11-07 (branch `hardcoded-migration`):** `Goalkeep` now has a hand-written implementation ported from the ai-team rcssserver keeper, and a new `Attack` skill ports the ai-team attacker (chase, shot selection, push-dribble, shoot). Both run at the robot limits in `skills/hardware.py` (20 deg/s turn, 5.75 m/s kick). Both are baselines, not the learned versions TASK-036 and TASK-031 describe; `Shoot` is still a stub, though `attack.choose_shot_target` is its aim selection. See SETUP_LOG. |
 | TASK-040, 042, 043 | Roles (Hungarian), learned-tactic wrapper, restart routines. All live inside the Coach. |
-| TASK-014 | `NetworkBackend.observe()`: merge frames, run the tracker, attach `GameState`, read geometry from the wire and fail on a Division mismatch. Unblocks the two-backend parity test. |
-| TASK-010, 011, 012 | `net/vision.py`, `net/robot_control.py`, `apps/wiggle.py`. Moved out of Tier 1 on 2026-09-04: the review scoped itself to training, and these prove the match path. Still cheap and worth doing early. |
-| TASK-015 | `net/sim_control.py`: ER-Force's `place()`. Blocked on the proto collision in SETUP_LOG Step 7. |
+| TASK-015 | `net/sim_control.py`: ER-Force's `place()`. Blocked on the proto collision in SETUP_LOG Step 7. **FINDING (TASK-014):** it is now the only reason `NetworkBackend.reset()` cannot run, so the parity test drives robot 0 to the start pose instead of placing it. It would also fix the next row's robot count. |
+| TASK-087 | **FINDING (TASK-014):** the ER-Force simulator on the `2020B` preset spawns **11 robots per team** (Division A's count) along the touchlines, so a networked match has 11 `us` against the Coach's 6. The commented-out `simulation-controller` in `docker-compose.yml` sets robot count from the referee's `max_allowed_bots`; enable it, or have TASK-015 remove the extras. Decide which. |
+| TASK-088 | **FINDING (TASK-014):** `NetworkBackend.dt` is 1/60 s, but its `step()` is paced by vision, and ER-Force publishes at ~66 Hz, so a networked step is ~15 ms. Anything that integrates by `backend.dt` on the match path is 10% off. Either measure `dt` from `WorldState.t` per step or document `dt` as nominal. |
+
 | TASK-018 | AutoReferee in the compose stack. |
 
 ---
@@ -181,7 +185,17 @@ Interim answers, not decisions. Detail in `docs/ARCHITECTURE.md` §13.
 - Observation scaling constants.
 - The exact stop-speed threshold for the rule filter.
 - Match path: radio frame, firmware heading field, real telemetry. Out of scope.
+  `net/robot_control.py` speaks the simulation protocol only; a radio sender
+  is a sibling with the same three methods.
+- Chip angle and dribbler maximum. The simulation protocol takes degrees and
+  rpm; our command has a chip flag and a 0..1 dribbler. Interim: 45 degrees
+  and 1000 rpm, constructor arguments of `RobotControlSender`, unmeasured.
+- Actuation delay. The tracker predicts to `now + actuation_delay`;
+  `NetworkBackend` defaults it to 0 until a robot is measured.
 - Set encoder architecture and zone discretisation.
+- Acceleration limits. `core/limits.py` has 3.0 m/s² linear and 20 rad/s²
+  angular, unmeasured on hardware (TASK-078). The codec enforces them and
+  checkpoints record them, so changing either retires old checkpoints.
 
 ---
 

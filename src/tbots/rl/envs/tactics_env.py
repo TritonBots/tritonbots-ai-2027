@@ -23,5 +23,5 @@ class TacticsEnv(SSLEnv):
     def _observe(self, world: WorldState) -> np.ndarray:
         raise NotImplementedError("TASK-051")
 
-    def _decode(self, action) -> list[RobotCommand]:
+    def _decode(self, action, world: WorldState) -> list[list[RobotCommand]]:
         raise NotImplementedError("TASK-051")
