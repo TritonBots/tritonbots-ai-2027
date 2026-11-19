@@ -67,6 +67,7 @@ it, because that is where real runs happen.
 | TASK-014 | `NetworkBackend.observe()`: vision through the tracker, `GameState` and telemetry attached, Division checked on the wire. The parity test runs: GoToPoint reaches 36 mm against ER-Force (blue) and 35 mm (yellow, defending +x). | `TBOTS_NETWORK_TESTS=1 pytest tests/test_network.py tests/test_backend_parity.py` |
 | TASK-075 | `perception/sim.py`: `PerceptionSim` delays truth by whole ticks, jitters poses, drops objects; `noisy` holds dropped objects at their last pose with `visible=False`; `tracked` emits `DetectionFrame`s plus synthetic `RobotFeedback` into the real `Tracker`. `Perception` runs any of the three modes. Ranges sampled per episode. | `tests/test_perception_sim.py` |
 | TASK-076 | `core/transition.py`: frozen `Transition(world, prev, commands, ego_id, geometry, dt, done)` and the `Done` enum (only `TIMEOUT` is a truncation). Reward terms take `tr`. `SSLEnv` holds truth (reward, termination) and perceived (observation) worlds, sums reward over the ticks of one step, and ends on goal, out-of-bounds, task predicate or timeout. | `tests/test_core.py`, `tests/test_rewards.py` |
+| TASK-078 | `rl/codec.py`: registered `skill_v1` codec. `{"move": Box(3), "flags": MultiBinary(2)}`; norm-limited speed; kick/dribble booleans map to kwarg speeds; kick clamped to 6.5 m/s; per-tick rate limit from `core/limits.py`; `action_repeat`; `spec()` for checkpoints. | `tests/test_codec.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -100,7 +101,6 @@ Three of the four are done — see §2. What is left:
 
 | ID | Task | Size | Done when |
 |---|---|---|---|
-| **TASK-078** | **Action codec** in `rl/codec.py`. `Box(vx, vy, vtheta)` plus kick and dribbler booleans; booleans map to speeds from skill kwargs; acceleration limits from `core`; 6.5 m/s kick clamp; `action_repeat`. Named and registered. | M | Golden test: a fixed action sequence decodes to a fixed `RobotCommand` sequence; a step change in commanded velocity is rate-limited. |
 | **TASK-053** | **Observation builders**, reshaped. Egocentric builder for skills, global fixed-size builder for tactics, fixed scaling constants, no robot-ID value anywhere. Golden-vector test per builder; builders are immutable once a checkpoint exists (a change is a new name). The set encoder proper is Tier 2. | M | `obs_size(name)` matches `build_obs` output for every registered name; golden vectors pass; TASK-081 passes. |
 | **TASK-079** | **`SkillTask` registry and scaffold.** A registered dataclass grouping scenario sampler, success and failure predicates, obs builder, codec, time limit, default reward YAML. `python -m tbots.rl.new_task <name>` writes the file with every hook documented, a reward YAML, and a test. Must be simple enough for a recruit's first afternoon. | M | `new_task demo` followed by `pytest tests/test_task_demo.py` passes on a clean checkout; `train env=skill task=demo train.total_steps=1000` runs. |
 | **TASK-050** | **`rl/envs/skill_env.py`**, now a thin env over a `SkillTask`: spaces from the codec and builder, `done` from the task predicates, out-of-bounds defaults to terminate. | S | One episode of `go_to_ball` runs in `truth`, `noisy` and `tracked` modes. |
@@ -194,6 +194,9 @@ Interim answers, not decisions. Detail in `docs/ARCHITECTURE.md` §13.
 - Actuation delay. The tracker predicts to `now + actuation_delay`;
   `NetworkBackend` defaults it to 0 until a robot is measured.
 - Set encoder architecture and zone discretisation.
+- Acceleration limits. `core/limits.py` has 3.0 m/s² linear and 20 rad/s²
+  angular, unmeasured on hardware (TASK-078). The codec enforces them and
+  checkpoints record them, so changing either retires old checkpoints.
 
 ---
 

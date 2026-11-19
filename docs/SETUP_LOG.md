@@ -2296,3 +2296,32 @@ Deviations:   - `Transition` and `Done` live in `core/transition.py`
 Notes:        Perception's RNG is drawn from the env's `np_random` at every
               reset, so one seed fixes both, and switching perception mode
               does not change which scenarios are drawn.
+
+## TASK-078 — action codec            [PASS]
+Verification: `pytest -q tests/test_codec.py` -> 7 passed: a pinned
+              five-action table decodes to the same five RobotCommands to
+              1e-12; a step to full speed rises 0.05 m/s per tick and
+              arrives at tick 40 (2 m/s at 3 m/s^2), spin at tick 18; kick
+              8 -> 6.5 m/s; `action_repeat=4` gives four separately limited
+              commands. `make lint`, `make test` clean.
+Deviations:   - "Acceleration limits from `core`": there were none. Added
+                `core/limits.py` with MAX_LINEAR_ACCEL = 3.0 m/s^2 and
+                MAX_ANGULAR_ACCEL = 20 rad/s^2, both UNMEASURED on
+                hardware. Basis, measured today: rSim itself ramps a robot
+                at ~3.5 m/s^2 linear and ~100 rad/s^2 angular under a step
+                command, so 3.0 just binds below rSim's own limit and 20 is a
+                motor-plausible cap. Added to TASKS.md section 6.
+              - The action space is a gymnasium `Dict` (`move` Box(3),
+                `flags` MultiBinary(2)) rather than one flat Box, so the
+                booleans are booleans and the trainer can put a Bernoulli
+                on them (TASK-056's composable distribution).
+              - The rate limit applies to the robot-frame command (what the
+                motors see), not the global-frame velocity. A robot that
+                turns while driving sees its command rotate without a limit.
+              - Defaults: max_speed 2.0 m/s, max_angular_speed 6 rad/s, kick
+                3.0 m/s, dribbler 1.0. A task overrides them; `spec()` records
+                them. NOTE `skills/hardware.py` says the ai-team robots ran at
+                1.05 m/s and 20 deg/s. Whoever exports a learned skill to
+                those robots must train with those codec kwargs.
+Notes:        A codec is stateful (previous command), so one per robot per
+              env, reset every episode.
