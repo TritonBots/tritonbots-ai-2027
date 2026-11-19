@@ -2325,3 +2325,27 @@ Deviations:   - "Acceleration limits from `core`": there were none. Added
                 those robots must train with those codec kwargs.
 Notes:        A codec is stateful (previous command), so one per robot per
               env, reset every episode.
+
+## TASK-053 — observation builders            [PASS]
+Verification: `pytest -q tests/test_obs.py` -> 11 passed: `obs_size`
+              matches `build_obs` for every registered name (a test fails if
+              a builder is registered without a golden vector); both golden
+              vectors, derived by hand for a fixed world and pinned; size
+              unchanged from 1v0 to 4v2; relabelling to {7,1,12,4}/{9,3} and
+              a shuffle changes neither builder's output; the ego builder is
+              unchanged when the whole scene rotates about the ego (bar the
+              goals, which are fixed in the field). `make lint`/`make test`
+              clean.
+Deviations:   - `register_obs(name, size, egocentric=...)`: the size is
+                declared at registration and checked on every call, so a
+                builder whose length drifts raises instead of reshaping a
+                policy's input. `is_egocentric(name)` and `obs_names()` added.
+              - Goal positions and POS_SCALE are fixed to Division B
+                (4.5 m), not read from config: they are part of the
+                builder's definition, and the field never shrinks
+                (ARCHITECTURE section 9, curriculum).
+              - The gate's "TASK-081 passes" is met for builders here; the
+                policy half of TASK-081 needs a policy and closes after
+                TASK-056.
+Notes:        Neighbours are ordered by distance, ties by relative position;
+              global slots by (x, y). Neither ever reads an ID.
