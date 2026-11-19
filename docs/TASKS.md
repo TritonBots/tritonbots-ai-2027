@@ -52,7 +52,6 @@ it, because that is where real runs happen.
 | Run artifacts | `rl/artifacts.py`: resolved config, atomic checkpoints, `format_version`. Metadata extends in TASK-059. | `tests/test_rl_artifacts.py` |
 | Hydra composition | `configs/config.yaml` composes `env`/`reward`/`train`. | `python -m tbots.rl.train train.run_dir=/tmp/x` |
 | External stack | `docker compose up -d`: game controller 3.21.0, ER-Force, vision-client. | SETUP_LOG Step 13 |
-| Throughput | 521 steps/s, 6v6, single process on WSL2; about 250 on Atlantis. Measured before TASK-070, so it was 521 steps of 17 ms; re-measure with TASK-055. | README |
 | TASK-070 | rSim steps at a true 1/60 s. Our fork's `SSL` takes a float-seconds timestep; an int is still milliseconds. | `tests/test_rsim_backend.py`, `docs/RSIM_FACTS.md` |
 | TASK-071 | The compose stack runs Division B (`GEOMETRY: "2020B"`), verified off the wire and in `ssl-vision-client`. | SETUP_LOG TASK-071 |
 | TASK-072 | `Backend` / `SimBackend` split. Opponents commandable, `place()`, unknown ids raise, `reconfigure()` gone. | `tests/test_rsim_backend.py` |
@@ -71,6 +70,7 @@ it, because that is where real runs happen.
 | TASK-053 | `rl/obs/builders.py`: `ego_v1` (33 floats, egocentric: ball, goals, nearest two teammates and opponents ordered by distance) and `global_v1` (113 floats, fixed six slots a side ordered by position). Fixed scaling constants, no ID values, golden vectors pinned. Set encoder stays TASK-083. | `tests/test_obs.py` |
 | TASK-050 | `rl/envs/skill_env.py`: `SkillEnv` over a `SkillTask` — spaces from codec and builder, `SKILL_SUCCESS`/`SKILL_FAILURE` from the task predicates, out-of-bounds terminates. Ships with the `SkillTask` registry (`rl/tasks/`) and the reference `go_to_ball` task. | `tests/test_skill_env.py` |
 | TASK-006 | `rl/factory.py`: `make_env(cfg)` builds backend → `Perception` → `SkillEnv`; `compose_config()` gives tests the CLI's config; `resolve_config()` makes the task's default reward explicit for the run record. New `configs/env/skill.yaml` (default); `div_b_6v6` is a 6v6 skill env until TASK-051; `perception:` replaces `domain_randomization`. Network config stays Tier 2. | `tests/test_factory.py` |
+| TASK-055 | `rl/vec.py`: `make_vec_env(cfg, n)` spawns one `make_env` per subprocess with `OMP_NUM_THREADS=1` and SAME_STEP autoreset; `python -m tbots.rl.vec` benchmarks. 6v6 on the (throttled) dev box: 139 / 674 / 837 steps/s for 1 / 8 / 32 workers in `truth`, 102 / 526 / 589 in `tracked`. | README, `tests/test_vec.py` |
 
 **Superseded, not deleted:** TASK-054's `rl/wrappers/domain_rand.py` (Gym
 wrapper on the observation vector). Replaced by `PerceptionSim` (TASK-075).
@@ -114,7 +114,6 @@ Three of the four are done — see §2. What is left:
 | **TASK-059** | **Checkpoint metadata**, extended: builder name and size, codec, `dt`, `action_repeat`, acceleration limits, perception mode, stage, git SHA. Refuse on builder/codec/`dt` mismatch, warn on perception mode, never check the SHA. | S | Tests for each refusal and the warning. |
 | **TASK-080** | **Seeding and determinism.** One seed through scenarios, perception noise, opponents, policy sampling. | S | Two runs with the same seed produce identical first 100 transitions per worker. |
 | **TASK-081** | **Robot-ID relabel invariance.** Relabel `us` and `them` IDs, assert every builder's output and a policy's output are unchanged. | S | The test exists and passes for every registered builder. |
-| **TASK-055** | **`rl/vec.py`**: subprocess vector env via `make_env`, `OMP_NUM_THREADS=1`, and the throughput benchmark. No in-run reconfigure. | S | A measured steps/s number for 1, 8 and 32 workers is written into README. |
 
 ### 3.6 Watching it play
 

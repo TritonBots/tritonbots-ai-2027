@@ -2412,3 +2412,37 @@ Deviations:   - `configs/config.yaml` defaults to `env: skill` and
                 configs/, so tests and benchmarks see exactly the CLI's config.
 Notes:        `curriculum_example.yaml` documents `train.resume_from`, which
               TASK-056 must implement.
+
+## TASK-055 — `rl/vec.py` and the throughput benchmark            [PASS]
+Verification: `python -m tbots.rl.vec --workers 1 8 32 --seconds 15
+              env=div_b_6v6 env.perception.mode={truth,tracked}` ->
+                workers   truth   tracked   (steps/s, summed over workers)
+                   1        139      102
+                   8        674      526
+                  32        837      589
+              Written into README. `pytest -q tests/test_vec.py` -> 3 passed
+              (final observations returned on episode end, workers seeded
+              apart and reproducibly, benchmark returns a rate).
+Deviations:   - The machine was throttled during the measurement, and the
+                README says so. Same-session reference: `viz_rsim --seconds 3`
+                gave 137 steps/s against 516-532 in September on the same
+                code path, and a pure-Python 10M-iteration loop took 1.51 s.
+                The CPU was 94% idle (the compose stack's ER-Force sim used
+                ~20% of one core). WSL reports a fixed 2995 MHz, so host-side
+                throttling cannot be read from inside. The ratios are the
+                usable result: 8 workers ~5x one, 32 on 8 CPUs only ~25% more,
+                `tracked` costs 25-30% vs `truth`, and the env layers keep
+                ~76% of raw rSim (266 steps/s bare backend, same session).
+                Re-run the command on an unthrottled host before making a
+                scaling decision on the absolute numbers.
+              - Workers start with `spawn`, not `fork`: the trainer's process
+                holds torch thread pools, and forking a process with live
+                threads can deadlock the child.
+              - Autoreset is `SAME_STEP` (gymnasium 1.3 defaults to
+                NEXT_STEP, where the step after an episode end ignores its
+                action). PPO needs the true last observation in
+                `info["final_obs"]` to bootstrap a truncation.
+              - The TASKS.md section 2 "Throughput" row (521 steps/s, before
+                TASK-070) is removed, and ARCHITECTURE section 9 now points to
+                the README instead of quoting it.
+Notes:        Not measured: Atlantis (TASK-064 runs this benchmark there).
